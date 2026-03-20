@@ -29,26 +29,13 @@ class VSwitchCollector(BaseCollector):
         try:
             if host.config and host.config.network and host.config.network.vswitch:
                 for vswitch in host.config.network.vswitch:
-                    # Extract security policy settings
-                    security_policy = getattr(vswitch, "spec", None)
-                    if security_policy:
-                        security_policy = getattr(security_policy, "policy", None)
-                    if security_policy:
-                        security_policy = getattr(security_policy, "security", None)
-
-                    # Extract traffic shaping settings
-                    shaping_policy = getattr(vswitch, "spec", None)
-                    if shaping_policy:
-                        shaping_policy = getattr(shaping_policy, "policy", None)
-                    if shaping_policy:
-                        shaping_policy = getattr(shaping_policy, "shapingPolicy", None)
-
-                    # Extract teaming policy
-                    teaming_policy = getattr(vswitch, "spec", None)
-                    if teaming_policy:
-                        teaming_policy = getattr(teaming_policy, "policy", None)
-                    if teaming_policy:
-                        teaming_policy = getattr(teaming_policy, "nicTeaming", None)
+                    # Extract policy objects once
+                    spec = getattr(vswitch, "spec", None)
+                    policy = getattr(spec, "policy", None) if spec else None
+                    
+                    security_policy = getattr(policy, "security", None) if policy else None
+                    shaping_policy = getattr(policy, "shapingPolicy", None) if policy else None
+                    teaming_policy = getattr(policy, "nicTeaming", None) if policy else None
 
                     vswitch_data = {
                         "host": host.name or "",
@@ -102,10 +89,8 @@ class VSwitchCollector(BaseCollector):
                         )
                         if teaming_policy
                         else "",
-                        "offload": str(
-                            getattr(getattr(vswitch, "spec", None), "mtu", "")
-                        )
-                        if getattr(vswitch, "spec", None)
+                        "offload": str(getattr(spec, "mtu", ""))
+                        if spec
                         else "",
                         "tso": "",
                         "zero_copy_xmit": "",
