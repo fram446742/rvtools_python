@@ -21,6 +21,11 @@ from rvtools.vsnapshot.vsnapshot import VSnapshotCollector
 from rvtools.vtools.vtools import VToolsCollector
 from rvtools.vcd.vcd import VCDCollector
 from rvtools.vusb.vusb import VUSBCollector
+from rvtools.vrp.vrp import VRPCollector
+from rvtools.vcluster.vcluster import VClusterCollector
+from rvtools.vhost.vhost import VHostCollector
+from rvtools.vdatastore.vdatastore import VDatastoreCollector
+from rvtools.vmultipath.vmultipath import VMultiPathCollector
 from rvtools.printrv.json_print import json_print_unified
 
 # requests.packages.urllib3.disable_warnings()
@@ -121,6 +126,11 @@ def main():
         VToolsCollector(service_instance, directory),
         VCDCollector(service_instance, directory),
         VUSBCollector(service_instance, directory),
+        VRPCollector(service_instance, directory),
+        VClusterCollector(service_instance, directory),
+        VHostCollector(service_instance, directory),
+        VDatastoreCollector(service_instance, directory),
+        VMultiPathCollector(service_instance, directory),
     ]
 
     for collector in collectors:
