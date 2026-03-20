@@ -85,6 +85,13 @@ def get_args():
     )
 
     parser.add_argument(
+        "--sheets",
+        required=False,
+        action="store",
+        help="Comma-separated list of sheets to collect (default: all). Example: vInfo,vPartition,vHealth",
+    )
+
+    parser.add_argument(
         "--threads",
         required=False,
         action="store",
@@ -103,72 +110,9 @@ def get_args():
     return parser.parse_args()
 
 
-def main():
-    """Main entry point"""
-    args = get_args()
-
-    # Get configuration
-    if (
-        args.host is None
-        or args.username is None
-        or args.password is None
-        or args.directory is None
-    ):
-        logger.info("Reading Conf File")
-        obj = CoreCode()
-        conn = obj.read_conf_file()
-        if conn is None:
-            sys.exit(1)
-        else:
-            server = conn._vcenter
-            username = conn._username
-            password = conn._password
-            directory = conn._directory
-            if server == "<fqdn>":
-                logger.error(
-                    "You are using default values. Please update ~/.rvtools.conf"
-                )
-                sys.exit(1)
-    else:
-        server = args.host
-        username = args.username
-        password = args.password
-        directory = args.directory
-
-    export_format = args.format or "xlsx"
-
-    # Parse threads
-    if args.threads.lower() == "auto":
-        max_workers = None
-    else:
-        try:
-            max_workers = int(args.threads)
-        except ValueError:
-            logger.error("--threads must be a number or 'auto'")
-            sys.exit(1)
-
-    # Setup logging
-    logger_instance, log_file = setup_logging(directory)
-
-    if not os.path.isdir(directory):
-        logger.error(f"Directory does not exist: {directory}")
-        sys.exit(1)
-
-    ssl_context = ssl._create_unverified_context()
-
-    logger.info(f"Connecting to vCenter: {server}")
-    logger.info(f"Export format: {export_format}")
-
-    try:
-        service_instance = connect.SmartConnect(
-            host=server, user=username, pwd=password, port=443, sslContext=ssl_context
-        )
-    except Exception as e:
-        logger.error(f"Failed to connect to vCenter: {e}")
-        sys.exit(1)
-
-    # Create collectors
-    collectors = [
+def get_all_collectors(service_instance, directory):
+    """Get all available collectors"""
+    return [
         VInfoCollector(service_instance, directory),
         VHealthCollector(service_instance, directory),
         VPartitionCollector(service_instance, directory),
@@ -198,16 +142,59 @@ def main():
         VMetaDataCollector(service_instance, directory),
     ]
 
-    # Execute collectors - always collect data, format handles export
-    executor = ParallelCollectorExecutor(max_workers=max_workers)
-    results = executor.execute_collectors(collectors, format_type="xlsx")
 
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H.%M")
+def filter_collectors_by_sheets(collectors, sheet_names):
+    """Filter collectors to only include specified sheets
+    
+    Args:
+        collectors: List of collector instances
+        sheet_names: Comma-separated sheet names or None for all
+        
+    Returns:
+        Filtered list of collectors
+    """
+    if not sheet_names:
+        return collectors
+    
+    requested_sheets = set(s.strip() for s in sheet_names.split(","))
+    return [c for c in collectors if c.sheet_name in requested_sheets]
+
+
+def process_single_vcenter(server, username, password, directory, export_format, max_workers, sheets_filter):
+    """Process data collection and export for a single vCenter"""
+    ssl_context = ssl._create_unverified_context()
+
+    logger.info(f"Connecting to vCenter: {server}")
+    logger.info(f"Export format: {export_format}")
 
     try:
+        service_instance = connect.SmartConnect(
+            host=server, user=username, pwd=password, port=443, sslContext=ssl_context
+        )
+    except Exception as e:
+        logger.error(f"Failed to connect to vCenter {server}: {e}")
+        return False
+
+    try:
+        # Get all collectors and filter by requested sheets
+        all_collectors = get_all_collectors(service_instance, directory)
+        collectors = filter_collectors_by_sheets(all_collectors, sheets_filter)
+
+        if sheets_filter:
+            logger.info(f"Collecting from {len(collectors)} selected sheets: {sheets_filter}")
+        else:
+            logger.info(f"Collecting from all {len(collectors)} sheets")
+
+        # Execute collectors
+        executor = ParallelCollectorExecutor(max_workers=max_workers)
+        results = executor.execute_collectors(collectors, format_type="xlsx")
+
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H.%M")
+        vcenter_suffix = f"_{server.replace('.', '_')}" if server != "localhost" else ""
+
         # Handle different export formats
         if export_format == "xlsx":
-            xlsx_filename = f"rvtools_{timestamp}.xlsx"
+            xlsx_filename = f"rvtools{vcenter_suffix}_{timestamp}.xlsx"
             exporter = XlsxExporter(xlsx_filename, directory)
 
             for sheet_name, data in results.items():
@@ -225,8 +212,8 @@ def main():
             unified_data = {
                 sheet_name: data for sheet_name, data in results.items() if data
             }
-            json_print_unified(f"rvtools_{timestamp}.json", unified_data, directory)
-            logger.info(f"✓ JSON unified export completed: rvtools_{timestamp}.json")
+            json_print_unified(f"rvtools{vcenter_suffix}_{timestamp}.json", unified_data, directory)
+            logger.info(f"✓ JSON unified export completed")
 
         elif export_format == "json-separate":
             from rvtools.printrv.json_print import json_print_separate
@@ -234,13 +221,11 @@ def main():
             for sheet_name, data in results.items():
                 if data:
                     try:
-                        json_print_separate(f"{sheet_name}_{timestamp}.json", data, directory)
+                        json_print_separate(f"{sheet_name}{vcenter_suffix}_{timestamp}.json", data, directory)
                     except Exception as e:
                         logger.error(f"Failed to export JSON for {sheet_name}: {e}", exc_info=True)
                         continue
-            logger.info(
-                f"✓ JSON separate export completed ({len([d for d in results.values() if d])} sheets)"
-            )
+            logger.info(f"✓ JSON separate export completed")
 
         elif export_format == "csv":
             from rvtools.printrv.csv_print import csv_print
@@ -248,19 +233,131 @@ def main():
             for sheet_name, data in results.items():
                 if data:
                     try:
-                        csv_print(f"{sheet_name}_{timestamp}.csv", data, directory)
+                        csv_print(f"{sheet_name}{vcenter_suffix}_{timestamp}.csv", data, directory)
                     except Exception as e:
                         logger.error(f"Failed to export CSV for {sheet_name}: {e}", exc_info=True)
                         continue
-            logger.info(
-                f"✓ CSV export completed ({len([d for d in results.values() if d])} sheets)"
-            )
+            logger.info(f"✓ CSV export completed")
+
+        return True
 
     except Exception as e:
-        logger.error(f"Fatal error during export: {e}", exc_info=True)
-        # Ensure logging is flushed before exit
+        logger.error(f"Fatal error during export for {server}: {e}", exc_info=True)
+        return False
+    finally:
         for handler in logger.handlers:
             handler.flush() if hasattr(handler, 'flush') else None
+
+
+def main():
+    """Main entry point"""
+    args = get_args()
+
+    # Parse threads
+    if args.threads.lower() == "auto":
+        max_workers = None
+    else:
+        try:
+            max_workers = int(args.threads)
+        except ValueError:
+            logger.error("--threads must be a number or 'auto'")
+            sys.exit(1)
+
+    # Determine export format
+    export_format = args.format or "xlsx"
+
+    # Determine sheets filter
+    sheets_filter = args.sheets
+
+    # Get configuration
+    if (
+        args.host is None
+        or args.username is None
+        or args.password is None
+        or args.directory is None
+    ):
+        logger.info("Reading Conf File")
+        obj = CoreCode()
+        
+        # Try to read multi-vCenter config first
+        multi_configs = obj.read_conf_file_multi()
+        
+        if multi_configs:
+            logger.info(f"Found {len(multi_configs)} vCenter configurations")
+            configs_to_process = multi_configs
+        else:
+            # Fallback to single config
+            conn = obj.read_conf_file()
+            if conn is None:
+                sys.exit(1)
+            
+            if conn._vcenter == "<fqdn>":
+                logger.error(
+                    "You are using default values. Please update ~/.rvtools.conf"
+                )
+                sys.exit(1)
+            
+            configs_to_process = [
+                {
+                    "vcenter": conn._vcenter,
+                    "username": conn._username,
+                    "password": conn._password,
+                    "directory": conn._directory,
+                    "format": conn._format,
+                    "threads": conn._threads,
+                }
+            ]
+    else:
+        # CLI arguments provided
+        configs_to_process = [
+            {
+                "vcenter": args.host,
+                "username": args.username,
+                "password": args.password,
+                "directory": args.directory,
+            }
+        ]
+
+    # Setup logging (use directory from first config)
+    directory = configs_to_process[0].get("directory")
+    logger_instance, log_file = setup_logging(directory)
+
+    if not os.path.isdir(directory):
+        logger.error(f"Directory does not exist: {directory}")
+        sys.exit(1)
+
+    # Process each vCenter configuration
+    success_count = 0
+    for config in configs_to_process:
+        try:
+            section_name = config.get("_section_name", config.get("vcenter", "unknown"))
+            logger.info(f"{'='*60}")
+            logger.info(f"Processing vCenter: {section_name}")
+            logger.info(f"{'='*60}")
+            
+            success = process_single_vcenter(
+                server=config.get("vcenter"),
+                username=config.get("username"),
+                password=config.get("password"),
+                directory=config.get("directory"),
+                export_format=export_format,
+                max_workers=max_workers,
+                sheets_filter=sheets_filter,
+            )
+            
+            if success:
+                success_count += 1
+        except Exception as e:
+            logger.error(f"Error processing vCenter config: {e}", exc_info=True)
+            continue
+
+    # Summary
+    logger.info(f"{'='*60}")
+    logger.info(f"Processing complete: {success_count}/{len(configs_to_process)} vCenters processed")
+    logger.info(f"{'='*60}")
+    
+    if success_count == 0:
+        sys.exit(1)
         sys.exit(1)
 
     logger.info(f"Log file: {log_file}")
