@@ -2,8 +2,23 @@
 
 from abc import ABC, abstractmethod
 import logging
+from rvtools.cache_utils import ViewCache
 
 logger = logging.getLogger("rvtools")
+
+# Global view cache shared across all collectors
+_global_view_cache = None
+
+
+def set_global_view_cache(cache):
+    """Set the global view cache for all collectors"""
+    global _global_view_cache
+    _global_view_cache = cache
+
+
+def get_global_view_cache():
+    """Get the global view cache"""
+    return _global_view_cache
 
 
 class BaseCollector(ABC):
@@ -24,6 +39,12 @@ class BaseCollector(ABC):
         except Exception as e:
             logger.error(f"Failed to retrieve content: {e}")
             self.content = None
+
+        # Use global cache if available, otherwise create local one
+        if _global_view_cache is not None:
+            self.view_cache = _global_view_cache
+        else:
+            self.view_cache = ViewCache(self.content) if self.content else None
 
     @property
     @abstractmethod

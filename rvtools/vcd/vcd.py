@@ -3,16 +3,10 @@
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 from rvtools.vm_utils import extract_vm_common_properties
-from rvtools.cache_utils import ViewCache
 
 
 class VCDCollector(BaseCollector):
     """Collector for vCD sheet - Virtual CD/DVD drives"""
-
-    def __init__(self, service_instance, directory):
-        """Initialize collector with cache"""
-        super().__init__(service_instance, directory)
-        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):

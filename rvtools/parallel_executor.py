@@ -3,6 +3,8 @@
 import os
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from rvtools.cache_utils import ViewCache
+from rvtools.collectors.base_collector import set_global_view_cache
 
 logger = logging.getLogger("rvtools")
 
@@ -37,6 +39,12 @@ class ParallelCollectorExecutor:
         results = {}
 
         logger.info(f"Starting parallel collection with {self.max_workers} threads")
+
+        # Create a shared global cache from the first collector's content
+        if collectors and collectors[0].content:
+            shared_cache = ViewCache(collectors[0].content)
+            set_global_view_cache(shared_cache)
+            logger.debug("Created shared view cache for all collectors")
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all tasks
