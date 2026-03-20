@@ -2,56 +2,85 @@
 
 import logging
 import sys
+import io
 from datetime import datetime
 
 
 class DualStreamHandler(logging.Handler):
-    """Handler that logs to both stdout and file"""
+    """Handler that logs to both stdout and file with proper buffering"""
 
     def __init__(self, file_path):
         super().__init__()
         self.file_path = file_path
-        self.formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+        self.file_handle = None
+        self._open_file()
+
+    def _open_file(self):
+        """Open file handle for writing"""
+        try:
+            self.file_handle = open(self.file_path, "a", buffering=1)  # Line buffering
+        except Exception as e:
+            print(f"Error opening log file: {e}", file=sys.stderr)
 
     def emit(self, record):
-        """Emit a record"""
-        msg = self.format(record)
-
-        # Print to stdout
-        print(msg)
-
-        # Also write to file
+        """Emit a record to both stdout and file"""
         try:
-            with open(self.file_path, "a") as f:
-                f.write(msg + "\n")
-        except Exception:
-            pass
+            msg = self.format(record)
+
+            # Print to stdout with flush
+            print(msg, flush=True)
+
+            # Write to file with flush
+            if self.file_handle and not self.file_handle.closed:
+                self.file_handle.write(msg + "\n")
+                self.file_handle.flush()
+        except Exception as e:
+            # Print to stderr if logging fails
+            print(f"Error in logging handler: {e}", file=sys.stderr)
+
+    def close(self):
+        """Close file handle"""
+        if self.file_handle and not self.file_handle.closed:
+            self.file_handle.flush()
+            self.file_handle.close()
+        super().close()
 
 
 def setup_logging(directory):
-    """Setup logging to both stdout and file"""
+    """Setup logging to both stdout and file with proper buffering"""
     log_file = f"{directory}/rvtools_{datetime.now().strftime('%Y-%m-%d_%H.%M')}.log"
 
-    # Ensure file exists
-    with open(log_file, "w") as f:
-        f.write(f"RVTools Log - {datetime.now()}\n")
+    # Initialize file with header
+    try:
+        with open(log_file, "w") as f:
+            f.write(f"RVTools Log - {datetime.now()}\n")
+            f.write("=" * 80 + "\n")
+            f.flush()
+    except Exception as e:
+        print(f"Error creating log file: {e}", file=sys.stderr)
 
     logger = logging.getLogger("rvtools")
     logger.setLevel(logging.DEBUG)
 
     # Remove existing handlers
-    logger.handlers = []
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
 
-    # Add dual handler
+    # Add dual handler with proper formatting
     handler = DualStreamHandler(log_file)
     handler.setLevel(logging.DEBUG)
 
     formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+    # Also add root logger to catch uncaught exceptions
+    root_logger = logging.getLogger()
+    if not any(isinstance(h, DualStreamHandler) for h in root_logger.handlers):
+        root_logger.addHandler(handler)
 
     return logger, log_file

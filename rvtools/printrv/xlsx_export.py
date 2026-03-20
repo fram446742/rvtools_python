@@ -45,7 +45,20 @@ class XlsxExporter:
         for row_idx, row_data in enumerate(data, 2):
             for col_idx, header in enumerate(headers, 1):
                 cell = sheet.cell(row=row_idx, column=col_idx)
-                cell.value = row_data.get(header, "")
+                value = row_data.get(header, "")
+                
+                # Convert value to Excel-compatible format
+                if value is None:
+                    cell.value = ""
+                elif isinstance(value, (str, int, float, bool, datetime)):
+                    cell.value = value
+                else:
+                    # Convert other types to string
+                    try:
+                        cell.value = str(value)
+                    except Exception:
+                        cell.value = "[Error converting value]"
+                
                 cell.alignment = Alignment(
                     horizontal="left", vertical="top", wrap_text=False
                 )

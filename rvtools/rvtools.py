@@ -204,47 +204,72 @@ def main():
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H.%M")
 
-    # Handle different export formats
-    if export_format == "xlsx":
-        xlsx_filename = f"rvtools_{timestamp}.xlsx"
-        exporter = XlsxExporter(xlsx_filename, directory)
+    try:
+        # Handle different export formats
+        if export_format == "xlsx":
+            xlsx_filename = f"rvtools_{timestamp}.xlsx"
+            exporter = XlsxExporter(xlsx_filename, directory)
 
-        for sheet_name, data in results.items():
-            if data:
-                exporter.add_sheet(sheet_name, data)
+            for sheet_name, data in results.items():
+                if data:
+                    try:
+                        exporter.add_sheet(sheet_name, data)
+                    except Exception as e:
+                        logger.error(f"Failed to add sheet {sheet_name}: {e}", exc_info=True)
+                        continue
 
-        exporter.save()
-        logger.info(f"✓ XLSX export completed: {xlsx_filename}")
+            exporter.save()
+            logger.info(f"✓ XLSX export completed: {xlsx_filename}")
 
-    elif export_format == "json-unified":
-        unified_data = {
-            sheet_name: data for sheet_name, data in results.items() if data
-        }
-        json_print_unified(f"rvtools_{timestamp}.json", unified_data, directory)
-        logger.info(f"✓ JSON unified export completed: rvtools_{timestamp}.json")
+        elif export_format == "json-unified":
+            unified_data = {
+                sheet_name: data for sheet_name, data in results.items() if data
+            }
+            json_print_unified(f"rvtools_{timestamp}.json", unified_data, directory)
+            logger.info(f"✓ JSON unified export completed: rvtools_{timestamp}.json")
 
-    elif export_format == "json-separate":
-        from rvtools.printrv.json_print import json_print_separate
+        elif export_format == "json-separate":
+            from rvtools.printrv.json_print import json_print_separate
 
-        for sheet_name, data in results.items():
-            if data:
-                json_print_separate(f"{sheet_name}_{timestamp}.json", data, directory)
-        logger.info(
-            f"✓ JSON separate export completed ({len([d for d in results.values() if d])} sheets)"
-        )
+            for sheet_name, data in results.items():
+                if data:
+                    try:
+                        json_print_separate(f"{sheet_name}_{timestamp}.json", data, directory)
+                    except Exception as e:
+                        logger.error(f"Failed to export JSON for {sheet_name}: {e}", exc_info=True)
+                        continue
+            logger.info(
+                f"✓ JSON separate export completed ({len([d for d in results.values() if d])} sheets)"
+            )
 
-    elif export_format == "csv":
-        from rvtools.printrv.csv_print import csv_print
+        elif export_format == "csv":
+            from rvtools.printrv.csv_print import csv_print
 
-        for sheet_name, data in results.items():
-            if data:
-                csv_print(f"{sheet_name}_{timestamp}.csv", data, directory)
-        logger.info(
-            f"✓ CSV export completed ({len([d for d in results.values() if d])} sheets)"
-        )
+            for sheet_name, data in results.items():
+                if data:
+                    try:
+                        csv_print(f"{sheet_name}_{timestamp}.csv", data, directory)
+                    except Exception as e:
+                        logger.error(f"Failed to export CSV for {sheet_name}: {e}", exc_info=True)
+                        continue
+            logger.info(
+                f"✓ CSV export completed ({len([d for d in results.values() if d])} sheets)"
+            )
+
+    except Exception as e:
+        logger.error(f"Fatal error during export: {e}", exc_info=True)
+        # Ensure logging is flushed before exit
+        for handler in logger.handlers:
+            handler.flush() if hasattr(handler, 'flush') else None
+        sys.exit(1)
 
     logger.info(f"Log file: {log_file}")
     logger.info("Collection completed successfully")
+    
+    # Ensure all logs are written before exit
+    for handler in logger.handlers:
+        handler.flush() if hasattr(handler, 'flush') else None
+        handler.close() if hasattr(handler, 'close') else None
 
 
 if __name__ == "__main__":
