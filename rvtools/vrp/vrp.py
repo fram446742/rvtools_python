@@ -2,10 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache
 
 
 class VRPCollector(BaseCollector):
     """Collector for vRP sheet - Resource Pools"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize collector with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -15,13 +21,10 @@ class VRPCollector(BaseCollector):
         """Collect resource pool information from vCenter"""
         rp_list = []
 
-        container = self.content.rootFolder
         view_type = [vim.ResourcePool]
-        container_view = self.content.viewManager.CreateContainerView(
-            container, view_type, True
-        )
+        rp_view_list = self.view_cache.get_list(view_type)
 
-        for resource_pool in container_view.view:
+        for resource_pool in rp_view_list:
             rp_data = self._collect_resource_pool(resource_pool)
             rp_list.append(rp_data)
 

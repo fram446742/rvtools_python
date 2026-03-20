@@ -2,10 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache
 
 
 class VClusterCollector(BaseCollector):
     """Collector for vCluster sheet - vSphere Clusters"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize collector with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -15,13 +21,10 @@ class VClusterCollector(BaseCollector):
         """Collect cluster information from vCenter"""
         cluster_list = []
 
-        container = self.content.rootFolder
         view_type = [vim.ClusterComputeResource]
-        container_view = self.content.viewManager.CreateContainerView(
-            container, view_type, True
-        )
+        cluster_view_list = self.view_cache.get_list(view_type)
 
-        for cluster in container_view.view:
+        for cluster in cluster_view_list:
             cluster_data = self._collect_cluster(cluster)
             cluster_list.append(cluster_data)
 

@@ -2,10 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache
 
 
 class DVSwitchCollector(BaseCollector):
     """Collector for dvSwitch sheet - Distributed Virtual Switches"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize collector with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -15,13 +21,10 @@ class DVSwitchCollector(BaseCollector):
         """Collect distributed vswitch information from vCenter"""
         dvswitch_list = []
         try:
-            container = self.content.rootFolder
             view_type = [vim.DistributedVirtualSwitch]
-            container_view = self.content.viewManager.CreateContainerView(
-                container, view_type, True
-            )
+            dvswitch_view_list = self.view_cache.get_list(view_type)
 
-            for dvswitch in container_view.view:
+            for dvswitch in dvswitch_view_list:
                 dvs_data = self._collect_dvswitch(dvswitch)
                 dvswitch_list.append(dvs_data)
         except Exception:
@@ -78,9 +81,7 @@ class DVSwitchCollector(BaseCollector):
 
     def _get_datacenter(self, dvswitch):
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder, [vim.Datacenter], True
-            )
-            return container.view[0].name if container.view else ""
+            datacenter_list = self.view_cache.get_list([vim.Datacenter])
+            return datacenter_list[0].name if datacenter_list else ""
         except Exception:
             return ""
