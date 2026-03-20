@@ -83,7 +83,7 @@ class VHostCollector(BaseCollector):
         vm_summary = ""
         if summary and hasattr(summary, "quickStats") and summary.quickStats:
             vm_summary = str(getattr(summary.quickStats, "guestHeartbeatStatus", ""))
-        
+
         host_data["num_vms_total"] = vm_summary
         host_data["num_vms"] = vm_summary
         host_data["vms_per_core"] = ""

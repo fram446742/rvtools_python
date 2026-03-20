@@ -55,7 +55,7 @@ class VHealthCollector(BaseCollector):
                         alarm_type = str(metric.key)
                     elif hasattr(metric, "counterId"):
                         alarm_type = f"metric_{metric.counterId}"
-            
+
             # Fallback: use alarm key
             if alarm_type == "Unknown" and hasattr(alarm.info, "key"):
                 key = alarm.info.key

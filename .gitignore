@@ -9,5 +9,5 @@ rvtools.conf
 build
 dist
 rvtools_python.egg-info
-RVTools_export_all*.xlsx
+*.xlsx
 *.log

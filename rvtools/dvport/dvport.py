@@ -89,11 +89,16 @@ class DVPortCollector(BaseCollector):
                             reverse_policy = str(getattr(teaming, "reversePolicy", ""))
                             notify_switch = str(getattr(teaming, "notifySwitches", ""))
                             rolling_order = str(getattr(teaming, "rollingOrder", ""))
-                            
+
                             # Extract failureCriteria.checkErrorPercent
-                            if hasattr(teaming, "failureCriteria") and teaming.failureCriteria:
+                            if (
+                                hasattr(teaming, "failureCriteria")
+                                and teaming.failureCriteria
+                            ):
                                 failure_criteria = teaming.failureCriteria
-                                check_error_obj = getattr(failure_criteria, "checkErrorPercent", "")
+                                check_error_obj = getattr(
+                                    failure_criteria, "checkErrorPercent", ""
+                                )
                                 if check_error_obj:
                                     check_error_percent = str(
                                         getattr(check_error_obj, "value", "")
