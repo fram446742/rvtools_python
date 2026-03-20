@@ -183,13 +183,14 @@ def main():
         VMetaDataCollector(service_instance, directory),
     ]
 
-    # Execute collectors
+    # Execute collectors - always collect data, format handles export
     executor = ParallelCollectorExecutor(max_workers=max_workers)
-    results = executor.execute_collectors(collectors, format_type=export_format if export_format != 'xlsx' else 'xlsx')
+    results = executor.execute_collectors(collectors, format_type='xlsx')
+
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H.%M')
 
     # Handle different export formats
     if export_format == 'xlsx':
-        timestamp = datetime.now().strftime('%Y-%m-%d_%H.%M')
         xlsx_filename = f"rvtools_{timestamp}.xlsx"
         exporter = XlsxExporter(xlsx_filename, directory)
         
@@ -202,11 +203,22 @@ def main():
 
     elif export_format == 'json-unified':
         unified_data = {sheet_name: data for sheet_name, data in results.items() if data}
-        timestamp = datetime.now().strftime('%Y-%m-%d_%H.%M')
         json_print_unified(f"rvtools_{timestamp}.json", unified_data, directory)
+        logger.info(f"✓ JSON unified export completed: rvtools_{timestamp}.json")
 
-    elif export_format in ['csv', 'json-separate']:
-        logger.info(f"✓ {export_format.upper()} export completed")
+    elif export_format == 'json-separate':
+        from rvtools.printrv.json_print import json_print_separate
+        for sheet_name, data in results.items():
+            if data:
+                json_print_separate(f"{sheet_name}_{timestamp}.json", data, directory)
+        logger.info(f"✓ JSON separate export completed ({len([d for d in results.values() if d])} sheets)")
+
+    elif export_format == 'csv':
+        from rvtools.printrv.csv_print import csv_print
+        for sheet_name, data in results.items():
+            if data:
+                csv_print(f"{sheet_name}_{timestamp}.csv", data, directory)
+        logger.info(f"✓ CSV export completed ({len([d for d in results.values() if d])} sheets)")
 
     logger.info(f"Log file: {log_file}")
     logger.info("Collection completed successfully")

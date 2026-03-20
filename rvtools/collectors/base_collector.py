@@ -1,6 +1,5 @@
 """Base class for all data collectors"""
 from abc import ABC, abstractmethod
-from datetime import datetime
 import logging
 
 logger = logging.getLogger('rvtools')
@@ -41,53 +40,15 @@ class BaseCollector(ABC):
         """
         pass
 
-    def export_csv(self, data):
-        """Export data as CSV file with timestamp"""
-        from rvtools.printrv.csv_print import csv_print
-
-        filename = self._get_filename('csv')
-        csv_print(filename, data, self.directory)
-
-    def export_json_separate(self, data):
-        """Export data as separate JSON file with timestamp"""
-        from rvtools.printrv.json_print import json_print_separate
-
-        filename = self._get_filename('json')
-        json_print_separate(filename, data, self.directory)
-
-    def export_json_unified(self, data, unified_data):
+    def run(self, format_type='xlsx'):
         """
-        Add data to unified JSON export
+        Run collector and return data
 
         Args:
-            data: Current sheet data
-            unified_data: Dictionary to accumulate all sheets
-        """
-        unified_data[self.sheet_name] = data
-
-    def _get_filename(self, extension):
-        """
-        Generate filename with timestamp
-
-        Format: SHEET_YYYY-MM-DD_HH.MM.ext
-
-        Args:
-            extension: File extension (csv, json)
+            format_type: Ignored (for compatibility). Data is always returned.
 
         Returns:
-            str: Formatted filename
-        """
-        now = datetime.now()
-        timestamp = now.strftime('%Y-%m-%d_%H.%M')
-        return f"{self.sheet_name}_{timestamp}.{extension}"
-
-    def run(self, format_type='xlsx', unified_data=None):
-        """
-        Run collector and export data
-
-        Args:
-            format_type: Export format ('xlsx', 'csv', 'json-separate', 'json-unified')
-            unified_data: Dictionary for unified JSON export
+            list: List of dictionaries containing collected data
         """
         try:
             logger.debug(f"## Processing {self.sheet_name} module")
@@ -95,16 +56,9 @@ class BaseCollector(ABC):
 
             if not data:
                 logger.warning(f"No data collected for {self.sheet_name}")
-                return
+                return []
 
-            if format_type == 'xlsx':
-                return data
-            elif format_type == 'csv':
-                self.export_csv(data)
-            elif format_type == 'json-separate':
-                self.export_json_separate(data)
-            elif format_type == 'json-unified':
-                self.export_json_unified(data, unified_data)
+            return data
         except Exception as e:
             logger.error(f"Error processing {self.sheet_name}: {e}", exc_info=True)
             return []
