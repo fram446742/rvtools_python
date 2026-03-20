@@ -77,10 +77,8 @@ def setup_logging(directory):
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-
-    # Also add root logger to catch uncaught exceptions
-    root_logger = logging.getLogger()
-    if not any(isinstance(h, DualStreamHandler) for h in root_logger.handlers):
-        root_logger.addHandler(handler)
+    
+    # Prevent propagation to root logger to avoid duplicates
+    logger.propagate = False
 
     return logger, log_file
