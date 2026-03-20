@@ -47,6 +47,14 @@ class VPortCollector(BaseCollector):
                         teaming_policy = getattr(
                             portgroup.spec.policy, "nicTeaming", None
                         )
+                        offload_policy = getattr(
+                            portgroup.spec.policy, "offloadPolicy", None
+                        )
+
+                    # Extract failure criteria if available
+                    failure_criteria = None
+                    if teaming_policy and hasattr(teaming_policy, "failureCriteria"):
+                        failure_criteria = teaming_policy.failureCriteria
 
                     port_data = {
                         "host": host.name or "",
@@ -100,9 +108,15 @@ class VPortCollector(BaseCollector):
                         )
                         if teaming_policy
                         else "",
-                        "offload": "",
+                        "offload": str(offload_policy) if offload_policy else "",
                         "tso": "",
                         "zero_copy_xmit": "",
+                        "percentage": str(getattr(failure_criteria, "percentage", ""))
+                        if failure_criteria
+                        else "",
+                        "full_duplex": str(getattr(failure_criteria, "fullDuplex", ""))
+                        if failure_criteria
+                        else "",
                         "vi_sdk_server": self.content.about.apiVersion or "",
                         "vi_sdk_uuid": self.content.about.instanceUuid or "",
                     }

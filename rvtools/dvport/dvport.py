@@ -70,18 +70,34 @@ class DVPortCollector(BaseCollector):
                                 getattr(security, "forgedTransmits", "")
                             )
 
+                        # Extract blocked status
+                        blocked = ""
+                        blocked_obj = getattr(default_config, "blocked", "")
+                        if blocked_obj:
+                            blocked = str(getattr(blocked_obj, "value", ""))
+
                         # Extract teaming policy
                         teaming = getattr(default_config, "nicTeaming", None)
                         policy = ""
                         reverse_policy = ""
                         notify_switch = ""
                         rolling_order = ""
+                        check_error_percent = ""
 
                         if teaming:
                             policy = str(getattr(teaming, "policy", ""))
                             reverse_policy = str(getattr(teaming, "reversePolicy", ""))
                             notify_switch = str(getattr(teaming, "notifySwitches", ""))
                             rolling_order = str(getattr(teaming, "rollingOrder", ""))
+                            
+                            # Extract failureCriteria.checkErrorPercent
+                            if hasattr(teaming, "failureCriteria") and teaming.failureCriteria:
+                                failure_criteria = teaming.failureCriteria
+                                check_error_obj = getattr(failure_criteria, "checkErrorPercent", "")
+                                if check_error_obj:
+                                    check_error_percent = str(
+                                        getattr(check_error_obj, "value", "")
+                                    )
 
                         # Extract traffic shaping
                         in_shaping = getattr(default_config, "inShapingPolicy", None)
@@ -151,7 +167,7 @@ class DVPortCollector(BaseCollector):
                         "vlan": vlan_config if "vlan_config" in locals() else "",
                         "speed": "",
                         "full_duplex": "",
-                        "blocked": "",
+                        "blocked": blocked if "blocked" in locals() else "",
                         "allow_promiscuous": allow_promiscuous
                         if "allow_promiscuous" in locals()
                         else "",
@@ -196,7 +212,9 @@ class DVPortCollector(BaseCollector):
                         "check_duplex": check_duplex
                         if "check_duplex" in locals()
                         else "",
-                        "check_error_percent": "",
+                        "check_error_percent": check_error_percent
+                        if "check_error_percent" in locals()
+                        else "",
                         "check_speed": check_speed if "check_speed" in locals() else "",
                         "percentage": "",
                         "block_override": block_override
