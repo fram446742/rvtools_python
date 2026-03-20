@@ -26,6 +26,13 @@ from rvtools.vcluster.vcluster import VClusterCollector
 from rvtools.vhost.vhost import VHostCollector
 from rvtools.vdatastore.vdatastore import VDatastoreCollector
 from rvtools.vmultipath.vmultipath import VMultiPathCollector
+from rvtools.vhba.vhba import VHBACollector
+from rvtools.vnic.vnic import VNICCollector
+from rvtools.vswitch.vswitch import VSwitchCollector
+from rvtools.vport.vport import VPortCollector
+from rvtools.dvswitch.dvswitch import DVSwitchCollector
+from rvtools.dvport.dvport import DVPortCollector
+from rvtools.vsc_vmk.vsc_vmk import VSCVMKCollector
 from rvtools.printrv.json_print import json_print_unified
 
 # requests.packages.urllib3.disable_warnings()
@@ -131,6 +138,13 @@ def main():
         VHostCollector(service_instance, directory),
         VDatastoreCollector(service_instance, directory),
         VMultiPathCollector(service_instance, directory),
+        VHBACollector(service_instance, directory),
+        VNICCollector(service_instance, directory),
+        VSwitchCollector(service_instance, directory),
+        VPortCollector(service_instance, directory),
+        DVSwitchCollector(service_instance, directory),
+        DVPortCollector(service_instance, directory),
+        VSCVMKCollector(service_instance, directory),
     ]
 
     for collector in collectors:
