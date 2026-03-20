@@ -2,18 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
-
-
-def get_obj(content, vimtype):
-    """Get first object of specified type"""
-    container = content.viewManager.CreateContainerView(
-        content.rootFolder, vimtype, True
-    )
-    return container.view[0].name if container.view else ""
+from rvtools.cache_utils import ViewCache
 
 
 class VInfoCollector(BaseCollector):
     """Collector for vInfo sheet - main VM information"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -21,17 +19,12 @@ class VInfoCollector(BaseCollector):
 
     def collect(self):
         """Collect VM information from vCenter"""
-        container = self.content.rootFolder
-        view_type = [vim.VirtualMachine]
-        container_view = self.content.viewManager.CreateContainerView(
-            container, view_type, True
-        )
-
         server_list = []
-        children = container_view.view
 
-        for child in children:
-            vinfo_data = self._collect_vm_info(child)
+        # Get all VMs using cached view
+        vms = self.view_cache.get_list([vim.VirtualMachine])
+        for vm in vms:
+            vinfo_data = self._collect_vm_info(vm)
             server_list.append(vinfo_data)
 
         return server_list
@@ -109,8 +102,8 @@ class VInfoCollector(BaseCollector):
         vinfo_data["firmware"] = vm.config.firmware or ""
         vinfo_data["path"] = vm.config.files.vmPathName or ""
 
-        vinfo_data["datacenter"] = get_obj(self.content, [vim.Datacenter])
-        vinfo_data["cluster"] = get_obj(self.content, [vim.ClusterComputeResource])
+        vinfo_data["datacenter"] = self._get_datacenter()
+        vinfo_data["cluster"] = self._get_cluster()
 
         vinfo_data["os_according_to_the_vmware_tools"] = vm.config.guestFullName or ""
         vinfo_data["vm_id"] = vm._moId or ""
@@ -138,3 +131,20 @@ class VInfoCollector(BaseCollector):
             if device._wsdlName == "VirtualMachineVideoCard":
                 return str(device.videoRamSizeInKB) if device.videoRamSizeInKB else ""
         return ""
+
+    def _get_datacenter(self):
+        """Get datacenter name using cached view"""
+        try:
+            datacenters = self.view_cache.get_list([vim.Datacenter])
+            return datacenters[0].name if datacenters else ""
+        except Exception:
+            return ""
+
+    def _get_cluster(self):
+        """Get cluster name using cached view"""
+        try:
+            clusters = self.view_cache.get_list([vim.ClusterComputeResource])
+            return clusters[0].name if clusters else ""
+        except Exception:
+            return ""
+
