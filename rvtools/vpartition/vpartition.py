@@ -70,6 +70,7 @@ class VPartitionCollector(BaseCollector):
             else:
                 partition_data["free_percent"] = ""
 
+            partition_data["internal_sort_column"] = ""
             partition_data["annotation"] = vm.config.annotation or ""
             # Add custom metadata
             partition_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
