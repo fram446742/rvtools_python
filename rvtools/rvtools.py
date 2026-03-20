@@ -15,6 +15,7 @@ from rvtools.logging_config import setup_logging
 from rvtools.parallel_executor import ParallelCollectorExecutor
 from rvtools.printrv.xlsx_export import XlsxExporter
 from rvtools.printrv.json_print import json_print_unified
+from rvtools.utils.retry import retry_with_backoff
 from rvtools.vinfo.vinfo import VInfoCollector
 from rvtools.vhealth.vhealth import VHealthCollector
 from rvtools.vpartition.vpartition import VPartitionCollector
@@ -169,6 +170,28 @@ def filter_collectors_by_sheets(collectors, sheet_names):
     return [c for c in collectors if c.sheet_name in requested_sheets]
 
 
+@retry_with_backoff(retries=3, initial_delay=1, backoff_factor=2)
+def connect_to_vcenter(server, username, password, ssl_context):
+    """Connect to vCenter with exponential backoff retry
+
+    Args:
+        server: vCenter FQDN or IP
+        username: vCenter username
+        password: vCenter password
+        ssl_context: SSL context for connection
+
+    Returns:
+        Service instance on success
+
+    Raises:
+        Exception on failure after retries
+    """
+    logger.debug(f"Attempting to connect to vCenter: {server}")
+    return connect.SmartConnect(
+        host=server, user=username, pwd=password, port=443, sslContext=ssl_context
+    )
+
+
 def process_single_vcenter(
     server, username, password, directory, export_format, max_workers, sheets_filter
 ):
@@ -179,9 +202,7 @@ def process_single_vcenter(
     logger.info(f"Export format: {export_format}")
 
     try:
-        service_instance = connect.SmartConnect(
-            host=server, user=username, pwd=password, port=443, sslContext=ssl_context
-        )
+        service_instance = connect_to_vcenter(server, username, password, ssl_context)
     except Exception as e:
         logger.error(f"Failed to connect to vCenter {server}: {e}")
         return False

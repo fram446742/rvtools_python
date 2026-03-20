@@ -5,6 +5,7 @@ from rvtools.collectors.base_collector import BaseCollector
 from rvtools.cache_utils import ViewCache
 from rvtools.vm_utils import extract_vm_common_properties
 from rvtools.utils.batch_collector import BatchPropertyCollector
+from rvtools.utils.annotation_extractor import AnnotationExtractor
 
 
 class VInfoCollector(BaseCollector):
