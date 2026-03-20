@@ -29,13 +29,12 @@ class VSwitchCollector(BaseCollector):
         try:
             if host.config and host.config.network and host.config.network.vswitch:
                 for vswitch in host.config.network.vswitch:
-                    # Extract policy objects once
-                    spec = getattr(vswitch, "spec", None)
-                    policy = getattr(spec, "policy", None) if spec else None
-                    
-                    security_policy = getattr(policy, "security", None) if policy else None
-                    shaping_policy = getattr(policy, "shapingPolicy", None) if policy else None
-                    teaming_policy = getattr(policy, "nicTeaming", None) if policy else None
+                    # Extract policies using helper method
+                    policies = self._extract_policies(vswitch)
+                    security_policy = policies["security"]
+                    shaping_policy = policies["shaping"]
+                    teaming_policy = policies["teaming"]
+                    spec = policies["spec"]
 
                     vswitch_data = {
                         "host": host.name or "",
@@ -115,3 +114,19 @@ class VSwitchCollector(BaseCollector):
             return host.parent.name if hasattr(host, "parent") and host.parent else ""
         except Exception:
             return ""
+
+    def _extract_policies(self, vswitch):
+        """Extract security, shaping, and teaming policies from vswitch"""
+        spec = getattr(vswitch, "spec", None)
+        policy = getattr(spec, "policy", None) if spec else None
+
+        security_policy = getattr(policy, "security", None) if policy else None
+        shaping_policy = getattr(policy, "shapingPolicy", None) if policy else None
+        teaming_policy = getattr(policy, "nicTeaming", None) if policy else None
+
+        return {
+            "spec": spec,
+            "security": security_policy,
+            "shaping": shaping_policy,
+            "teaming": teaming_policy,
+        }

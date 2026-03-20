@@ -29,29 +29,13 @@ class VPortCollector(BaseCollector):
         try:
             if host.config and host.config.network and host.config.network.portgroup:
                 for portgroup in host.config.network.portgroup:
-                    # Extract port security policy
-                    security_policy = None
-                    shaping_policy = None
-                    teaming_policy = None
-
-                    if portgroup.spec and portgroup.spec.policy:
-                        security_policy = getattr(
-                            portgroup.spec.policy, "security", None
-                        )
-                        shaping_policy = getattr(
-                            portgroup.spec.policy, "shapingPolicy", None
-                        )
-                        teaming_policy = getattr(
-                            portgroup.spec.policy, "nicTeaming", None
-                        )
-                        offload_policy = getattr(
-                            portgroup.spec.policy, "offloadPolicy", None
-                        )
-
-                    # Extract failure criteria if available
-                    failure_criteria = None
-                    if teaming_policy and hasattr(teaming_policy, "failureCriteria"):
-                        failure_criteria = teaming_policy.failureCriteria
+                    # Extract policies using helper method
+                    policies = self._extract_portgroup_policies(portgroup)
+                    security_policy = policies["security"]
+                    shaping_policy = policies["shaping"]
+                    teaming_policy = policies["teaming"]
+                    offload_policy = policies["offload"]
+                    failure_criteria = policies["failure_criteria"]
 
                     port_data = {
                         "host": host.name or "",
@@ -134,3 +118,29 @@ class VPortCollector(BaseCollector):
             return host.parent.name if hasattr(host, "parent") and host.parent else ""
         except Exception:
             return ""
+
+    def _extract_portgroup_policies(self, portgroup):
+        """Extract security, shaping, teaming, and offload policies from portgroup"""
+        security_policy = None
+        shaping_policy = None
+        teaming_policy = None
+        offload_policy = None
+        failure_criteria = None
+
+        if portgroup.spec and portgroup.spec.policy:
+            security_policy = getattr(portgroup.spec.policy, "security", None)
+            shaping_policy = getattr(portgroup.spec.policy, "shapingPolicy", None)
+            teaming_policy = getattr(portgroup.spec.policy, "nicTeaming", None)
+            offload_policy = getattr(portgroup.spec.policy, "offloadPolicy", None)
+
+            # Extract failure criteria if available
+            if teaming_policy and hasattr(teaming_policy, "failureCriteria"):
+                failure_criteria = teaming_policy.failureCriteria
+
+        return {
+            "security": security_policy,
+            "shaping": shaping_policy,
+            "teaming": teaming_policy,
+            "offload": offload_policy,
+            "failure_criteria": failure_criteria,
+        }
