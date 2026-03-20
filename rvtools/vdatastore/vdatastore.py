@@ -2,10 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache
 
 
 class VDatastoreCollector(BaseCollector):
     """Collector for vDatastore sheet - Storage datastores"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize collector with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -15,13 +21,10 @@ class VDatastoreCollector(BaseCollector):
         """Collect datastore information from vCenter"""
         datastore_list = []
 
-        container = self.content.rootFolder
         view_type = [vim.Datastore]
-        container_view = self.content.viewManager.CreateContainerView(
-            container, view_type, True
-        )
+        datastore_view_list = self.view_cache.get_list(view_type)
 
-        for datastore in container_view.view:
+        for datastore in datastore_view_list:
             ds_data = self._collect_datastore(datastore)
             datastore_list.append(ds_data)
 
