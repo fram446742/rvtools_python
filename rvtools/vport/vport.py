@@ -2,10 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache
 
 
 class VPortCollector(BaseCollector):
     """Collector for vPort sheet - vSwitch Port Groups"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize collector with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -14,13 +20,10 @@ class VPortCollector(BaseCollector):
     def collect(self):
         """Collect port group information from all hosts"""
         port_list = []
-        container = self.content.rootFolder
         view_type = [vim.HostSystem]
-        container_view = self.content.viewManager.CreateContainerView(
-            container, view_type, True
-        )
+        host_view_list = self.view_cache.get_list(view_type)
 
-        for host in container_view.view:
+        for host in host_view_list:
             host_ports = self._collect_host_ports(host)
             port_list.extend(host_ports)
 
@@ -127,10 +130,8 @@ class VPortCollector(BaseCollector):
 
     def _get_datacenter(self, host):
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder, [vim.Datacenter], True
-            )
-            return container.view[0].name if container.view else ""
+            datacenter_list = self.view_cache.get_list([vim.Datacenter])
+            return datacenter_list[0].name if datacenter_list else ""
         except Exception:
             return ""
 

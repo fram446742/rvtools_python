@@ -3,10 +3,16 @@
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 from rvtools.vm_utils import extract_vm_common_properties
+from rvtools.cache_utils import ViewCache
 
 
 class VMemoryCollector(BaseCollector):
     """Collector for vMemory sheet - Memory configuration and entitlements"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize collector with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -14,15 +20,12 @@ class VMemoryCollector(BaseCollector):
 
     def collect(self):
         """Collect memory information from all VMs"""
-        container = self.content.rootFolder
         view_type = [vim.VirtualMachine]
-        container_view = self.content.viewManager.CreateContainerView(
-            container, view_type, True
-        )
+        vm_view_list = self.view_cache.get_list(view_type)
 
         memory_list = []
 
-        for vm in container_view.view:
+        for vm in vm_view_list:
             memory_data = self._collect_vm_memory(vm)
             memory_list.append(memory_data)
 
@@ -104,20 +107,16 @@ class VMemoryCollector(BaseCollector):
     def _get_datacenter(self, vm):
         """Get datacenter name for VM"""
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder, [vim.Datacenter], True
-            )
-            return container.view[0].name if container.view else ""
+            datacenter_list = self.view_cache.get_list([vim.Datacenter])
+            return datacenter_list[0].name if datacenter_list else ""
         except Exception:
             return ""
 
     def _get_cluster(self, vm):
         """Get cluster name for VM"""
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder, [vim.ClusterComputeResource], True
-            )
-            return container.view[0].name if container.view else ""
+            cluster_list = self.view_cache.get_list([vim.ClusterComputeResource])
+            return cluster_list[0].name if cluster_list else ""
         except Exception:
             return ""
 

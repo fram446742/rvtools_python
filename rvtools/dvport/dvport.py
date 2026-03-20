@@ -2,10 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache
 
 
 class DVPortCollector(BaseCollector):
     """Collector for dvPort sheet - Distributed Virtual Switch Ports"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize collector with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -15,13 +21,10 @@ class DVPortCollector(BaseCollector):
         """Collect distributed vswitch port information from vCenter"""
         dvport_list = []
         try:
-            container = self.content.rootFolder
             view_type = [vim.DistributedVirtualSwitch]
-            container_view = self.content.viewManager.CreateContainerView(
-                container, view_type, True
-            )
+            dvswitch_view_list = self.view_cache.get_list(view_type)
 
-            for dvswitch in container_view.view:
+            for dvswitch in dvswitch_view_list:
                 dvswitch_ports = self._collect_dvswitch_ports(dvswitch)
                 dvport_list.extend(dvswitch_ports)
         except Exception:
