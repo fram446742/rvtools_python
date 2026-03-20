@@ -3,10 +3,25 @@
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 from rvtools.vm_utils import extract_vm_common_properties
+from rvtools.utils.batch_collector import BatchPropertyCollector
 
 
 class VCPUCollector(BaseCollector):
     """Collector for vCPU sheet - CPU configuration and entitlements"""
+
+    # CPU-related properties to batch collect
+    VM_PROPERTIES = [
+        'config.name', 'runtime.powerState', 'config.hardware.numCPU',
+        'config.hardware.numCoresPerSocket', 'config.cpuAllocation.shares',
+        'config.cpuAllocation.reservation', 'config.cpuAllocation.limit',
+        'config.annotation', 'config.guestFullName', 'runtime.host',
+        'parent', 'config.uuid'
+    ]
+
+    def __init__(self, service_instance, directory):
+        """Initialize with batch collector"""
+        super().__init__(service_instance, directory)
+        self.batch_collector = BatchPropertyCollector(self.content)
 
     @property
     def sheet_name(self):
@@ -17,21 +32,24 @@ class VCPUCollector(BaseCollector):
         view_type = [vim.VirtualMachine]
         vm_view_list = self.view_cache.get_list(view_type)
 
+        # Batch collect all properties
+        batch_results = self.batch_collector.collect_vm_properties(vm_view_list, self.VM_PROPERTIES)
+
         cpu_list = []
 
         for vm in vm_view_list:
-            cpu_data = self._collect_vm_cpu(vm)
+            cpu_data = self._collect_vm_cpu(vm, batch_results)
             cpu_list.append(cpu_data)
 
         return cpu_list
 
-    def _collect_vm_cpu(self, vm):
+    def _collect_vm_cpu(self, vm, batch_results):
         """Collect CPU information for a single VM"""
         cpu_data = {}
 
-        cpu_data["vm"] = vm.name or ""
-        cpu_data["powerstate"] = (
-            str(vm.runtime.powerState) if vm.runtime.powerState else ""
+        cpu_data["vm"] = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.name') or ""
+        cpu_data["powerstate"] = str(
+            self.batch_collector.get_vm_property_batch(vm, batch_results, 'runtime.powerState') or ""
         )
 
         # Extract common VM properties
@@ -39,44 +57,36 @@ class VCPUCollector(BaseCollector):
         cpu_data["template"] = common_props["template"]
         cpu_data["srm_placeholder"] = common_props["srm_placeholder"]
 
-        cpu_data["cpus"] = (
-            str(vm.config.hardware.numCPU) if vm.config.hardware.numCPU else ""
+        cpu_data["cpus"] = str(
+            self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.hardware.numCPU') or ""
         )
-        cpu_data["sockets"] = (
-            str(vm.config.hardware.numCoresPerSocket)
-            if hasattr(vm.config.hardware, "numCoresPerSocket")
-            else ""
-        )
-
-        cores_per_socket = getattr(vm.config.hardware, "numCoresPerSocket", 1) or 1
-        cpu_data["cores_p_s"] = str(cores_per_socket)
+        
+        cores_per_socket = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.hardware.numCoresPerSocket')
+        cpu_data["sockets"] = str(cores_per_socket) if cores_per_socket else ""
+        cpu_data["cores_p_s"] = str(cores_per_socket or 1)
 
         cpu_data["max"] = ""
         cpu_data["overall"] = ""
 
         cpu_data["level"] = ""
-        cpu_data["shares"] = (
-            str(vm.config.cpuAllocation.shares.shares)
-            if vm.config.cpuAllocation.shares
-            else ""
-        )
-        cpu_data["reservation"] = (
-            str(vm.config.cpuAllocation.reservation)
-            if vm.config.cpuAllocation.reservation
-            else ""
-        )
+        
+        cpu_allocation_shares = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.cpuAllocation.shares')
+        cpu_data["shares"] = str(cpu_allocation_shares.shares) if cpu_allocation_shares else ""
+        
+        cpu_reservation = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.cpuAllocation.reservation')
+        cpu_data["reservation"] = str(cpu_reservation) if cpu_reservation else ""
+        
         cpu_data["entitlement"] = ""
         cpu_data["drs_entitlement"] = ""
-        cpu_data["limit"] = (
-            str(vm.config.cpuAllocation.limit) if vm.config.cpuAllocation.limit else ""
-        )
+        
+        cpu_limit = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.cpuAllocation.limit')
+        cpu_data["limit"] = str(cpu_limit) if cpu_limit else ""
 
         cpu_data["hot_add"] = ""
         cpu_data["hot_remove"] = ""
         cpu_data["numa_hotadd_exposed"] = ""
 
-        cpu_data["annotation"] = vm.config.annotation or ""
-        # Add custom metadata
+        cpu_data["annotation"] = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.annotation') or ""
         cpu_data["com_emc_avamar_vmware_snapshot"] = common_props.get(
             "com_emc_avamar_vmware_snapshot", ""
         )
@@ -88,12 +98,12 @@ class VCPUCollector(BaseCollector):
         )
         cpu_data["datacenter"] = self._get_datacenter(vm)
         cpu_data["cluster"] = self._get_cluster(vm)
-        cpu_data["host"] = self._get_host(vm)
-        cpu_data["folder"] = self._get_folder(vm)
+        cpu_data["host"] = self._get_host(vm, batch_results)
+        cpu_data["folder"] = self._get_folder(vm, batch_results)
         cpu_data["os_according_to_config"] = ""
-        cpu_data["os_according_to_vmware_tools"] = vm.config.guestFullName or ""
+        cpu_data["os_according_to_vmware_tools"] = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.guestFullName') or ""
         cpu_data["vm_id"] = vm._moId or ""
-        cpu_data["vm_uuid"] = vm.config.uuid or ""
+        cpu_data["vm_uuid"] = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.uuid') or ""
         cpu_data["vi_sdk_server"] = self.content.about.apiVersion or ""
         cpu_data["vi_sdk_uuid"] = self.content.about.instanceUuid or ""
 
@@ -115,16 +125,18 @@ class VCPUCollector(BaseCollector):
         except Exception:
             return ""
 
-    def _get_host(self, vm):
+    def _get_host(self, vm, batch_results):
         """Get host name for VM"""
         try:
-            return vm.runtime.host.name if vm.runtime.host else ""
+            host = self.batch_collector.get_vm_property_batch(vm, batch_results, 'runtime.host')
+            return host.name if host else ""
         except Exception:
             return ""
 
-    def _get_folder(self, vm):
+    def _get_folder(self, vm, batch_results):
         """Get folder name for VM"""
         try:
-            return vm.parent.name if vm.parent else ""
+            parent = self.batch_collector.get_vm_property_batch(vm, batch_results, 'parent')
+            return parent.name if parent else ""
         except Exception:
             return ""

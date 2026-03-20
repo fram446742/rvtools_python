@@ -3,10 +3,23 @@
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 from rvtools.vm_utils import extract_vm_common_properties
+from rvtools.utils.batch_collector import BatchPropertyCollector
 
 
 class VNetworkCollector(BaseCollector):
     """Collector for vNetwork sheet - VM network adapters"""
+
+    # Network-related properties to batch collect
+    VM_PROPERTIES = [
+        'config.name', 'runtime.powerState', 'config.hardware.device',
+        'guest.net', 'config.annotation', 'config.guestFullName',
+        'runtime.host', 'parent', 'config.uuid'
+    ]
+
+    def __init__(self, service_instance, directory):
+        """Initialize with batch collector"""
+        super().__init__(service_instance, directory)
+        self.batch_collector = BatchPropertyCollector(self.content)
 
     @property
     def sheet_name(self):
@@ -17,42 +30,45 @@ class VNetworkCollector(BaseCollector):
         view_type = [vim.VirtualMachine]
         vm_view_list = self.view_cache.get_list(view_type)
 
+        # Batch collect all properties
+        batch_results = self.batch_collector.collect_vm_properties(vm_view_list, self.VM_PROPERTIES)
+
         network_list = []
 
         for vm in vm_view_list:
-            vm_networks = self._collect_vm_networks(vm)
+            vm_networks = self._collect_vm_networks(vm, batch_results)
             network_list.extend(vm_networks)
 
         return network_list
 
-    def _collect_vm_networks(self, vm):
+    def _collect_vm_networks(self, vm, batch_results):
         """Collect network information for a single VM"""
         networks = []
 
-        if not vm.config.hardware.device:
+        devices = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.hardware.device')
+        if not devices:
             return networks
 
         # Filter to only VirtualEthernetCard devices before iterating
         nic_devices = [
-            device for device in vm.config.hardware.device
+            device for device in devices
             if isinstance(device, vim.vm.device.VirtualEthernetCard)
         ]
 
         for nic_device in nic_devices:
-            network_data = self._collect_nic(vm, nic_device)
+            network_data = self._collect_nic(vm, nic_device, batch_results)
             networks.append(network_data)
 
         return networks
 
-    def _collect_nic(self, vm, nic_device):
+    def _collect_nic(self, vm, nic_device, batch_results):
         """Collect information for a single NIC"""
         network_data = {}
 
-        network_data["vm"] = vm.name or ""
-        network_data["powerstate"] = (
-            str(vm.runtime.powerState) if vm.runtime.powerState else ""
+        network_data["vm"] = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.name') or ""
+        network_data["powerstate"] = str(
+            self.batch_collector.get_vm_property_batch(vm, batch_results, 'runtime.powerState') or ""
         )
-        # Extract common VM properties
 
         common_props = extract_vm_common_properties(vm)
 
@@ -84,14 +100,12 @@ class VNetworkCollector(BaseCollector):
         network_data["mac_address"] = nic_device.macAddress or ""
         network_data["type"] = type(nic_device).__name__
 
-        network_data["ipv4_address"] = self._get_ipv4(vm)
-        network_data["ipv6_address"] = self._get_ipv6(vm)
+        network_data["ipv4_address"] = self._get_ipv4(vm, batch_results)
+        network_data["ipv6_address"] = self._get_ipv6(vm, batch_results)
         network_data["direct_path_io"] = ""
         network_data["internal_sort_column"] = ""
 
-        network_data["annotation"] = vm.config.annotation or ""
-
-        # Add custom metadata
+        network_data["annotation"] = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.annotation') or ""
 
         network_data["com_emc_avamar_vmware_snapshot"] = common_props.get(
             "com_emc_avamar_vmware_snapshot", ""
@@ -106,22 +120,23 @@ class VNetworkCollector(BaseCollector):
         )
         network_data["datacenter"] = self._get_datacenter(vm)
         network_data["cluster"] = self._get_cluster(vm)
-        network_data["host"] = self._get_host(vm)
-        network_data["folder"] = self._get_folder(vm)
+        network_data["host"] = self._get_host(vm, batch_results)
+        network_data["folder"] = self._get_folder(vm, batch_results)
         network_data["os_according_to_config"] = ""
-        network_data["os_according_to_vmware_tools"] = vm.config.guestFullName or ""
+        network_data["os_according_to_vmware_tools"] = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.guestFullName') or ""
         network_data["vm_id"] = vm._moId or ""
-        network_data["vm_uuid"] = vm.config.uuid or ""
+        network_data["vm_uuid"] = self.batch_collector.get_vm_property_batch(vm, batch_results, 'config.uuid') or ""
         network_data["vi_sdk_server"] = self.content.about.apiVersion or ""
         network_data["vi_sdk_uuid"] = self.content.about.instanceUuid or ""
 
         return network_data
 
-    def _get_ipv4(self, vm):
+    def _get_ipv4(self, vm, batch_results):
         """Get primary IPv4 address"""
         try:
-            if vm.guest and vm.guest.net:
-                for net_info in vm.guest.net:
+            guest_net = self.batch_collector.get_vm_property_batch(vm, batch_results, 'guest.net')
+            if guest_net:
+                for net_info in guest_net:
                     if net_info.ipConfig and net_info.ipConfig.ipAddress:
                         for ip_config in net_info.ipConfig.ipAddress:
                             if ":" not in ip_config.ipAddress:
@@ -130,11 +145,12 @@ class VNetworkCollector(BaseCollector):
             pass
         return ""
 
-    def _get_ipv6(self, vm):
+    def _get_ipv6(self, vm, batch_results):
         """Get primary IPv6 address"""
         try:
-            if vm.guest and vm.guest.net:
-                for net_info in vm.guest.net:
+            guest_net = self.batch_collector.get_vm_property_batch(vm, batch_results, 'guest.net')
+            if guest_net:
+                for net_info in guest_net:
                     if net_info.ipConfig and net_info.ipConfig.ipAddress:
                         for ip_config in net_info.ipConfig.ipAddress:
                             if ":" in ip_config.ipAddress:
@@ -157,14 +173,16 @@ class VNetworkCollector(BaseCollector):
         except Exception:
             return ""
 
-    def _get_host(self, vm):
+    def _get_host(self, vm, batch_results):
         try:
-            return vm.runtime.host.name if vm.runtime.host else ""
+            host = self.batch_collector.get_vm_property_batch(vm, batch_results, 'runtime.host')
+            return host.name if host else ""
         except Exception:
             return ""
 
-    def _get_folder(self, vm):
+    def _get_folder(self, vm, batch_results):
         try:
-            return vm.parent.name if vm.parent else ""
+            parent = self.batch_collector.get_vm_property_batch(vm, batch_results, 'parent')
+            return parent.name if parent else ""
         except Exception:
             return ""
