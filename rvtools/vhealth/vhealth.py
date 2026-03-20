@@ -34,21 +34,38 @@ class VHealthCollector(BaseCollector):
         health_data["name"] = alarm.info.name or ""
         health_data["message"] = alarm.info.description or ""
 
-        # Extract alarm type from key (e.g., "com.vmware.vc.vm.VmOrphanedEvent" -> "Orphaned")
+        # Extract alarm type from alarm object
         alarm_type = "Unknown"
         try:
-            if hasattr(alarm.info, "key") and alarm.info.key:
+            # Try to get from trigger (which contains the event/metric being monitored)
+            if hasattr(alarm.info, "trigger"):
+                trigger = alarm.info.trigger
+                # For event-based alarms
+                if hasattr(trigger, "eventType"):
+                    event_type = trigger.eventType
+                    # Extract last part of event type (e.g., "vim.event.VmCreatedEvent" -> "VmCreatedEvent")
+                    if isinstance(event_type, str) and "." in event_type:
+                        alarm_type = event_type.split(".")[-1]
+                    else:
+                        alarm_type = str(event_type)
+                # For metric-based alarms
+                elif hasattr(trigger, "metricId"):
+                    metric = trigger.metricId
+                    if hasattr(metric, "key"):
+                        alarm_type = str(metric.key)
+                    elif hasattr(metric, "counterId"):
+                        alarm_type = f"metric_{metric.counterId}"
+            
+            # Fallback: use alarm key
+            if alarm_type == "Unknown" and hasattr(alarm.info, "key"):
                 key = alarm.info.key
-                # Extract meaningful part from key
-                if "." in key:
-                    parts = key.split(".")
-                    alarm_type = parts[-1]  # Last part after final dot
-                else:
-                    alarm_type = key
-            # Try to get from alarm expression if available
-            if hasattr(alarm.info, "alarm") and hasattr(alarm.info.alarm, "expression"):
-                if hasattr(alarm.info.alarm.expression, "elementName"):
-                    alarm_type = alarm.info.alarm.expression.elementName or alarm_type
+                if key:
+                    # Extract meaningful part from key
+                    if "." in key:
+                        parts = key.split(".")
+                        alarm_type = parts[-1]
+                    else:
+                        alarm_type = key
         except Exception:
             pass
 

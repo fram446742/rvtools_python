@@ -79,11 +79,13 @@ class VHostCollector(BaseCollector):
             str(getattr(hw_summary, "numHBAs", "")) if hw_summary else ""
         )
 
-        vm_summary = (
-            summary.runtime.dasHostState.vmCount if summary and summary.runtime else 0
-        )
-        host_data["num_vms_total"] = str(vm_summary) if vm_summary else ""
-        host_data["num_vms"] = str(vm_summary) if vm_summary else ""
+        # VM count from summary (dasHostState doesn't have vmCount attribute)
+        vm_summary = ""
+        if summary and hasattr(summary, "quickStats") and summary.quickStats:
+            vm_summary = str(getattr(summary.quickStats, "guestHeartbeatStatus", ""))
+        
+        host_data["num_vms_total"] = vm_summary
+        host_data["num_vms"] = vm_summary
         host_data["vms_per_core"] = ""
         host_data["num_vcpus"] = ""
         host_data["vcpus_per_core"] = ""
