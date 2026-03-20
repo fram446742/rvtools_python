@@ -34,16 +34,24 @@ class VNICCollector(BaseCollector):
                 for nic in host.config.network.pnic:
                     # Get driver info
                     driver = ""
-                    if hasattr(nic, 'driver'):
+                    if hasattr(nic, "driver"):
                         driver = nic.driver or ""
-                    
+
                     # Get linkSpeed info
                     speed = ""
                     duplex = ""
                     if hasattr(nic, "linkSpeed") and nic.linkSpeed:
-                        speed = str(nic.linkSpeed.speedMb) if hasattr(nic.linkSpeed, 'speedMb') else ""
-                        duplex = str(nic.linkSpeed.duplex) if hasattr(nic.linkSpeed, 'duplex') else ""
-                    
+                        speed = (
+                            str(nic.linkSpeed.speedMb)
+                            if hasattr(nic.linkSpeed, "speedMb")
+                            else ""
+                        )
+                        duplex = (
+                            str(nic.linkSpeed.duplex)
+                            if hasattr(nic.linkSpeed, "duplex")
+                            else ""
+                        )
+
                     # Try to find vswitch membership
                     switch_name = ""
                     uplink_port = ""
@@ -51,12 +59,12 @@ class VNICCollector(BaseCollector):
                         for vswitch in host.config.network.vswitch:
                             if vswitch.spec and vswitch.spec.bridge:
                                 # Check if NIC is part of this bridge
-                                if hasattr(vswitch.spec.bridge, 'nicDevice'):
+                                if hasattr(vswitch.spec.bridge, "nicDevice"):
                                     if nic.device in vswitch.spec.bridge.nicDevice:
                                         switch_name = vswitch.name or ""
                                         uplink_port = nic.device or ""
                                         break
-                    
+
                     nic_data = {
                         "host": host.name or "",
                         "datacenter": self._get_datacenter(host),
@@ -69,7 +77,9 @@ class VNICCollector(BaseCollector):
                         "switch": switch_name,
                         "uplink_port": uplink_port,
                         "pci": nic.pci or "",
-                        "wake_on": str(getattr(nic, 'wakeOnLanSupported', '')) if hasattr(nic, 'wakeOnLanSupported') else "",
+                        "wake_on": str(getattr(nic, "wakeOnLanSupported", ""))
+                        if hasattr(nic, "wakeOnLanSupported")
+                        else "",
                         "vi_sdk_server": self.content.about.apiVersion or "",
                         "vi_sdk_uuid": self.content.about.instanceUuid or "",
                     }

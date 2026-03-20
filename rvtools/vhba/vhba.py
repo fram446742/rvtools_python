@@ -38,26 +38,26 @@ class VHBACollector(BaseCollector):
                 for hba in host.config.storageDevice.hostBusAdapter:
                     # Extract HBA type from class name or deviceType
                     hba_type = ""
-                    if hasattr(hba, 'deviceType'):
+                    if hasattr(hba, "deviceType"):
                         hba_type = hba.deviceType or ""
-                    
+
                     # Try to determine status from HBA
                     status = ""
-                    if hasattr(hba, 'status'):
+                    if hasattr(hba, "status"):
                         status = str(hba.status) if hba.status else ""
-                    
+
                     # Get model name
                     model = ""
-                    if hasattr(hba, 'model'):
+                    if hasattr(hba, "model"):
                         model = hba.model or ""
-                    
+
                     # Get WWN (World Wide Name) for FC HBAs
                     wwn = ""
-                    if hasattr(hba, 'portWorldWideName'):
-                        wwn = str(getattr(hba, 'portWorldWideName', '')) or ""
-                    elif hasattr(hba, 'wwn'):
+                    if hasattr(hba, "portWorldWideName"):
+                        wwn = str(getattr(hba, "portWorldWideName", "")) or ""
+                    elif hasattr(hba, "wwn"):
                         wwn = str(hba.wwn) or ""
-                    
+
                     hba_data = {
                         "host": host.name or "",
                         "datacenter": self._get_datacenter(host),

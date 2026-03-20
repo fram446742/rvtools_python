@@ -24,7 +24,7 @@ class VFileInfoCollector(BaseCollector):
         try:
             # Get all VMs
             vms = self.view_cache.get_list([vim.VirtualMachine])
-            
+
             for vm in vms:
                 vm_files = self._collect_vm_files(vm)
                 file_list.extend(vm_files)
@@ -52,7 +52,7 @@ class VFileInfoCollector(BaseCollector):
                         "vi_sdk_uuid": self.content.about.instanceUuid or "",
                     }
                     files.append(file_data)
-                
+
                 # VM memory snapshot files
                 if vm.config.files and vm.config.files.snapshotDirectory:
                     snapshot_path = vm.config.files.snapshotDirectory
@@ -67,22 +67,26 @@ class VFileInfoCollector(BaseCollector):
                         "vi_sdk_uuid": self.content.about.instanceUuid or "",
                     }
                     files.append(file_data)
-                
+
                 # Virtual disks (VMDK files)
                 if vm.config.hardware and vm.config.hardware.device:
                     for device in vm.config.hardware.device:
                         if isinstance(device, vim.vm.device.VirtualDisk):
-                            if device.backing and hasattr(device.backing, 'fileName'):
+                            if device.backing and hasattr(device.backing, "fileName"):
                                 disk_path = device.backing.fileName
                                 file_data = {
                                     "friendly_path_name": f"{vm.name} (Disk)" or "",
                                     "file_name": self._extract_filename(disk_path),
                                     "file_type": "VMDK",
-                                    "file_size_in_bytes": str(device.capacityInBytes) if hasattr(device, 'capacityInBytes') else "",
+                                    "file_size_in_bytes": str(device.capacityInBytes)
+                                    if hasattr(device, "capacityInBytes")
+                                    else "",
                                     "path": disk_path,
                                     "internal_sort_column": "3",
-                                    "vi_sdk_server": self.content.about.apiVersion or "",
-                                    "vi_sdk_uuid": self.content.about.instanceUuid or "",
+                                    "vi_sdk_server": self.content.about.apiVersion
+                                    or "",
+                                    "vi_sdk_uuid": self.content.about.instanceUuid
+                                    or "",
                                 }
                                 files.append(file_data)
         except Exception:
@@ -101,4 +105,3 @@ class VFileInfoCollector(BaseCollector):
         elif "\\" in path:
             return path.split("\\")[-1]
         return path
-

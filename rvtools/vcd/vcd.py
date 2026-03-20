@@ -68,17 +68,19 @@ class VCDCollector(BaseCollector):
 
         cd_data["annotation"] = vm.config.annotation or ""
 
-
         # Add custom metadata
 
+        cd_data["com_emc_avamar_vmware_snapshot"] = common_props.get(
+            "com_emc_avamar_vmware_snapshot", ""
+        )
 
-        cd_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
+        cd_data["com_vmware_vdp2_is_protected"] = common_props.get(
+            "com_vmware_vdp2_is_protected", ""
+        )
 
-
-        cd_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
-
-
-        cd_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
+        cd_data["com_vmware_vdp2_protected_by"] = common_props.get(
+            "com_vmware_vdp2_protected_by", ""
+        )
         cd_data["datacenter"] = self._get_datacenter(vm)
         cd_data["cluster"] = self._get_cluster(vm)
         cd_data["host"] = self._get_host(vm)

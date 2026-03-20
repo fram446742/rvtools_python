@@ -15,15 +15,22 @@ logger = logging.getLogger("rvtools")
 class CoreCode(object):
     """Main Class *CoreCode* responsible for read the conf file feature"""
 
-    def read_conf_file(self):
-        """Read single vCenter config from TOML file (legacy support)"""
-        home_area = os.path.expanduser("~")
-        toml_path = os.path.join(home_area, ".rvtools.toml")
+    def read_conf_file(self, config_path=None):
+        """Read single vCenter config from TOML file (legacy support)
+
+        Args:
+            config_path: Path to config file. If None, uses ~/.rvtools.toml
+        """
+        if config_path is None:
+            home_area = os.path.expanduser("~")
+            toml_path = os.path.join(home_area, ".rvtools.toml")
+        else:
+            toml_path = os.path.expanduser(config_path)
 
         try:
             with open(toml_path, "rb") as f:
                 config = tomllib.load(f)
-            
+
             # Try to get default section or first available
             if "default" in config:
                 section = config["default"]
@@ -34,27 +41,31 @@ class CoreCode(object):
                 # Get first section
                 sections = [v for v in config.values() if isinstance(v, dict)]
                 if not sections:
-                    logger.error("No valid configuration found in ~/.rvtools.toml")
+                    logger.error("No valid configuration found in config file")
                     return None
                 section = sections[0]
-            
+
             # Validate required fields
-            if not all(k in section for k in ["vcenter", "username", "password", "directory"]):
-                logger.error("Missing required fields in config: vcenter, username, password, directory")
+            if not all(
+                k in section for k in ["vcenter", "username", "password", "directory"]
+            ):
+                logger.error(
+                    "Missing required fields in config: vcenter, username, password, directory"
+                )
                 return None
-            
+
             # Create object from config
             return self._config_to_object(section)
-        
+
         except FileNotFoundError:
             return self._create_default_config()
         except Exception as e:
             logger.error(f"Error reading TOML config: {e}")
             return None
 
-    def read_conf_file_multi(self):
+    def read_conf_file_multi(self, config_path=None):
         """Read multi-vCenter config file (TOML format)
-        
+
         Supports format:
         [vcenter1]
         vcenter = "host1.domain.com"
@@ -63,29 +74,37 @@ class CoreCode(object):
         directory = "/tmp"
         format = "xlsx"
         threads = "8"
-        
+
         [vcenter2]
         vcenter = "host2.domain.com"
         username = "user2"
         password = "pass2"
         directory = "/tmp"
-        
+
+        Args:
+            config_path: Path to config file. If None, uses ~/.rvtools.toml
+
         Returns: List of config dicts, or None if file not found or invalid
         """
-        home_area = os.path.expanduser("~")
-        toml_path = os.path.join(home_area, ".rvtools.toml")
+        if config_path is None:
+            home_area = os.path.expanduser("~")
+            toml_path = os.path.join(home_area, ".rvtools.toml")
+        else:
+            toml_path = os.path.expanduser(config_path)
 
         try:
             with open(toml_path, "rb") as f:
                 config = tomllib.load(f)
-            
+
             configs = []
-            
+
             # Check if this is a multi-vcenter config or legacy format
             if "default" in config and isinstance(config["default"], dict):
                 # Multi-vCenter format with [default] and other [name] sections
                 for section_name, section_config in config.items():
-                    if isinstance(section_config, dict) and self._validate_config(section_config):
+                    if isinstance(section_config, dict) and self._validate_config(
+                        section_config
+                    ):
                         section_config["_section_name"] = section_name
                         configs.append(section_config)
             elif "vcenter" in config and isinstance(config["vcenter"], str):
@@ -96,12 +115,14 @@ class CoreCode(object):
             else:
                 # All top-level items should be sections
                 for section_name, section_config in config.items():
-                    if isinstance(section_config, dict) and self._validate_config(section_config):
+                    if isinstance(section_config, dict) and self._validate_config(
+                        section_config
+                    ):
                         section_config["_section_name"] = section_name
                         configs.append(section_config)
-            
+
             return configs if configs else None
-        
+
         except FileNotFoundError:
             return None
         except Exception as e:
@@ -110,7 +131,9 @@ class CoreCode(object):
 
     def _validate_config(self, config):
         """Check if config has minimum required fields"""
-        return all(k in config for k in ["vcenter", "username", "password", "directory"])
+        return all(
+            k in config for k in ["vcenter", "username", "password", "directory"]
+        )
 
     def _config_to_object(self, config_dict):
         """Convert config dict to CoreCode object"""
@@ -128,8 +151,8 @@ class CoreCode(object):
         """Create default config file"""
         home_area = os.path.expanduser("~")
         toml_path = os.path.join(home_area, ".rvtools.toml")
-        
-        default_template = '''# RVTools Configuration File (TOML format)
+
+        default_template = """# RVTools Configuration File (TOML format)
 
 # Default vCenter configuration
 [default]
@@ -157,12 +180,12 @@ verbose = false
 # directory = "/tmp/dev"
 # format = "csv"
 # threads = "4"
-'''
-        
+"""
+
         try:
             with open(toml_path, "w") as f:
                 f.write(default_template)
-            
+
             print("RVTools configuration file created at ~/.rvtools.toml")
             print("Please update with your vCenter details:")
             print("-" * 50)
@@ -170,8 +193,7 @@ verbose = false
             print("-" * 50)
             logger.info("Default config created at ~/.rvtools.toml")
             return None
-        
+
         except Exception as e:
             logger.error(f"Failed to create default config: {e}")
             return None
-

@@ -36,7 +36,7 @@ class VCPUCollector(BaseCollector):
         cpu_data["powerstate"] = (
             str(vm.runtime.powerState) if vm.runtime.powerState else ""
         )
-        
+
         # Extract common VM properties
         common_props = extract_vm_common_properties(vm)
         cpu_data["template"] = common_props["template"]
@@ -80,9 +80,15 @@ class VCPUCollector(BaseCollector):
 
         cpu_data["annotation"] = vm.config.annotation or ""
         # Add custom metadata
-        cpu_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
-        cpu_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
-        cpu_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
+        cpu_data["com_emc_avamar_vmware_snapshot"] = common_props.get(
+            "com_emc_avamar_vmware_snapshot", ""
+        )
+        cpu_data["com_vmware_vdp2_is_protected"] = common_props.get(
+            "com_vmware_vdp2_is_protected", ""
+        )
+        cpu_data["com_vmware_vdp2_protected_by"] = common_props.get(
+            "com_vmware_vdp2_protected_by", ""
+        )
         cpu_data["datacenter"] = self._get_datacenter(vm)
         cpu_data["cluster"] = self._get_cluster(vm)
         cpu_data["host"] = self._get_host(vm)

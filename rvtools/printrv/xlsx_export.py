@@ -46,7 +46,7 @@ class XlsxExporter:
             for col_idx, header in enumerate(headers, 1):
                 cell = sheet.cell(row=row_idx, column=col_idx)
                 value = row_data.get(header, "")
-                
+
                 # Convert value to Excel-compatible format
                 if value is None:
                     cell.value = ""
@@ -58,7 +58,7 @@ class XlsxExporter:
                         cell.value = str(value)
                     except Exception:
                         cell.value = "[Error converting value]"
-                
+
                 cell.alignment = Alignment(
                     horizontal="left", vertical="top", wrap_text=False
                 )

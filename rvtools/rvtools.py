@@ -107,6 +107,15 @@ def get_args():
         help="Show additional info",
     )
 
+    parser.add_argument(
+        "-c",
+        "--config",
+        required=False,
+        action="store",
+        default=None,
+        help="Path to configuration file (default: ~/.rvtools.toml)",
+    )
+
     return parser.parse_args()
 
 
@@ -145,22 +154,24 @@ def get_all_collectors(service_instance, directory):
 
 def filter_collectors_by_sheets(collectors, sheet_names):
     """Filter collectors to only include specified sheets
-    
+
     Args:
         collectors: List of collector instances
         sheet_names: Comma-separated sheet names or None for all
-        
+
     Returns:
         Filtered list of collectors
     """
     if not sheet_names:
         return collectors
-    
+
     requested_sheets = set(s.strip() for s in sheet_names.split(","))
     return [c for c in collectors if c.sheet_name in requested_sheets]
 
 
-def process_single_vcenter(server, username, password, directory, export_format, max_workers, sheets_filter):
+def process_single_vcenter(
+    server, username, password, directory, export_format, max_workers, sheets_filter
+):
     """Process data collection and export for a single vCenter"""
     ssl_context = ssl._create_unverified_context()
 
@@ -181,7 +192,9 @@ def process_single_vcenter(server, username, password, directory, export_format,
         collectors = filter_collectors_by_sheets(all_collectors, sheets_filter)
 
         if sheets_filter:
-            logger.info(f"Collecting from {len(collectors)} selected sheets: {sheets_filter}")
+            logger.info(
+                f"Collecting from {len(collectors)} selected sheets: {sheets_filter}"
+            )
         else:
             logger.info(f"Collecting from all {len(collectors)} sheets")
 
@@ -202,7 +215,9 @@ def process_single_vcenter(server, username, password, directory, export_format,
                     try:
                         exporter.add_sheet(sheet_name, data)
                     except Exception as e:
-                        logger.error(f"Failed to add sheet {sheet_name}: {e}", exc_info=True)
+                        logger.error(
+                            f"Failed to add sheet {sheet_name}: {e}", exc_info=True
+                        )
                         continue
 
             exporter.save()
@@ -212,7 +227,9 @@ def process_single_vcenter(server, username, password, directory, export_format,
             unified_data = {
                 sheet_name: data for sheet_name, data in results.items() if data
             }
-            json_print_unified(f"rvtools{vcenter_suffix}_{timestamp}.json", unified_data, directory)
+            json_print_unified(
+                f"rvtools{vcenter_suffix}_{timestamp}.json", unified_data, directory
+            )
             logger.info(f"✓ JSON unified export completed")
 
         elif export_format == "json-separate":
@@ -221,9 +238,16 @@ def process_single_vcenter(server, username, password, directory, export_format,
             for sheet_name, data in results.items():
                 if data:
                     try:
-                        json_print_separate(f"{sheet_name}{vcenter_suffix}_{timestamp}.json", data, directory)
+                        json_print_separate(
+                            f"{sheet_name}{vcenter_suffix}_{timestamp}.json",
+                            data,
+                            directory,
+                        )
                     except Exception as e:
-                        logger.error(f"Failed to export JSON for {sheet_name}: {e}", exc_info=True)
+                        logger.error(
+                            f"Failed to export JSON for {sheet_name}: {e}",
+                            exc_info=True,
+                        )
                         continue
             logger.info(f"✓ JSON separate export completed")
 
@@ -233,9 +257,15 @@ def process_single_vcenter(server, username, password, directory, export_format,
             for sheet_name, data in results.items():
                 if data:
                     try:
-                        csv_print(f"{sheet_name}{vcenter_suffix}_{timestamp}.csv", data, directory)
+                        csv_print(
+                            f"{sheet_name}{vcenter_suffix}_{timestamp}.csv",
+                            data,
+                            directory,
+                        )
                     except Exception as e:
-                        logger.error(f"Failed to export CSV for {sheet_name}: {e}", exc_info=True)
+                        logger.error(
+                            f"Failed to export CSV for {sheet_name}: {e}", exc_info=True
+                        )
                         continue
             logger.info(f"✓ CSV export completed")
 
@@ -246,7 +276,7 @@ def process_single_vcenter(server, username, password, directory, export_format,
         return False
     finally:
         for handler in logger.handlers:
-            handler.flush() if hasattr(handler, 'flush') else None
+            handler.flush() if hasattr(handler, "flush") else None
 
 
 def main():
@@ -276,27 +306,30 @@ def main():
         or args.password is None
         or args.directory is None
     ):
-        logger.info("Reading TOML configuration file from ~/.rvtools.toml")
+        config_file = args.config or os.path.expanduser("~/.rvtools.toml")
+        logger.info(f"Reading TOML configuration file from {config_file}")
         obj = CoreCode()
-        
+
         # Try to read multi-vCenter config first
-        multi_configs = obj.read_conf_file_multi()
-        
+        multi_configs = obj.read_conf_file_multi(args.config)
+
         if multi_configs:
-            logger.info(f"Found {len(multi_configs)} vCenter configuration(s): {', '.join(c.get('_section_name', 'unknown') for c in multi_configs)}")
+            logger.info(
+                f"Found {len(multi_configs)} vCenter configuration(s): {', '.join(c.get('_section_name', 'unknown') for c in multi_configs)}"
+            )
             configs_to_process = multi_configs
         else:
             # Fallback to single config
-            conn = obj.read_conf_file()
+            conn = obj.read_conf_file(args.config)
             if conn is None:
                 sys.exit(1)
-            
+
             if conn._vcenter == "<fqdn>":
                 logger.error(
-                    "You are using default values. Please update ~/.rvtools.toml"
+                    f"You are using default values. Please update {config_file}"
                 )
                 sys.exit(1)
-            
+
             configs_to_process = [
                 {
                     "vcenter": conn._vcenter,
@@ -333,10 +366,10 @@ def main():
     for config in configs_to_process:
         try:
             section_name = config.get("_section_name", config.get("vcenter", "unknown"))
-            logger.info(f"{'='*60}")
+            logger.info(f"{'=' * 60}")
             logger.info(f"Processing vCenter: {section_name}")
-            logger.info(f"{'='*60}")
-            
+            logger.info(f"{'=' * 60}")
+
             success = process_single_vcenter(
                 server=config.get("vcenter"),
                 username=config.get("username"),
@@ -346,7 +379,7 @@ def main():
                 max_workers=max_workers,
                 sheets_filter=sheets_filter,
             )
-            
+
             if success:
                 success_count += 1
         except Exception as e:
@@ -354,21 +387,23 @@ def main():
             continue
 
     # Summary
-    logger.info(f"{'='*60}")
-    logger.info(f"Processing complete: {success_count}/{len(configs_to_process)} vCenters processed")
-    logger.info(f"{'='*60}")
-    
+    logger.info(f"{'=' * 60}")
+    logger.info(
+        f"Processing complete: {success_count}/{len(configs_to_process)} vCenters processed"
+    )
+    logger.info(f"{'=' * 60}")
+
     if success_count == 0:
         sys.exit(1)
         sys.exit(1)
 
     logger.info(f"Log file: {log_file}")
     logger.info("Collection completed successfully")
-    
+
     # Ensure all logs are written before exit
     for handler in logger.handlers:
-        handler.flush() if hasattr(handler, 'flush') else None
-        handler.close() if hasattr(handler, 'close') else None
+        handler.flush() if hasattr(handler, "flush") else None
+        handler.close() if hasattr(handler, "close") else None
 
 
 if __name__ == "__main__":

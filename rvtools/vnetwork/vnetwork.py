@@ -89,17 +89,19 @@ class VNetworkCollector(BaseCollector):
 
         network_data["annotation"] = vm.config.annotation or ""
 
-
         # Add custom metadata
 
+        network_data["com_emc_avamar_vmware_snapshot"] = common_props.get(
+            "com_emc_avamar_vmware_snapshot", ""
+        )
 
-        network_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
+        network_data["com_vmware_vdp2_is_protected"] = common_props.get(
+            "com_vmware_vdp2_is_protected", ""
+        )
 
-
-        network_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
-
-
-        network_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
+        network_data["com_vmware_vdp2_protected_by"] = common_props.get(
+            "com_vmware_vdp2_protected_by", ""
+        )
         network_data["datacenter"] = self._get_datacenter(vm)
         network_data["cluster"] = self._get_cluster(vm)
         network_data["host"] = self._get_host(vm)

@@ -57,12 +57,12 @@ class VSnapshotCollector(BaseCollector):
         snapshot_data["powerstate"] = (
             str(vm.runtime.powerState) if vm.runtime.powerState else ""
         )
-        
+
         # Extract common VM properties
         common_props = extract_vm_common_properties(vm)
         snapshot_data["template"] = common_props["template"]
         snapshot_data["srm_placeholder"] = common_props["srm_placeholder"]
-        
+
         snapshot_data["name"] = snapshot.name or ""
         snapshot_data["description"] = snapshot.description or ""
         snapshot_data["datetime"] = (
@@ -76,9 +76,15 @@ class VSnapshotCollector(BaseCollector):
 
         snapshot_data["annotation"] = vm.config.annotation or ""
         # Add custom metadata
-        snapshot_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
-        snapshot_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
-        snapshot_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
+        snapshot_data["com_emc_avamar_vmware_snapshot"] = common_props.get(
+            "com_emc_avamar_vmware_snapshot", ""
+        )
+        snapshot_data["com_vmware_vdp2_is_protected"] = common_props.get(
+            "com_vmware_vdp2_is_protected", ""
+        )
+        snapshot_data["com_vmware_vdp2_protected_by"] = common_props.get(
+            "com_vmware_vdp2_protected_by", ""
+        )
         snapshot_data["datacenter"] = self._get_datacenter(vm)
         snapshot_data["cluster"] = self._get_cluster(vm)
         snapshot_data["host"] = self._get_host(vm)

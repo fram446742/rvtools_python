@@ -47,21 +47,37 @@ class VHostCollector(BaseCollector):
         summary = host.summary if host.summary else None
         hw_summary = summary.hardware if summary else None
 
-        host_data["cpu_model"] = getattr(hw_summary, "cpuModel", "") if hw_summary else ""
-        host_data["speed"] = str(getattr(hw_summary, "cpuMhz", "")) if hw_summary else ""
+        host_data["cpu_model"] = (
+            getattr(hw_summary, "cpuModel", "") if hw_summary else ""
+        )
+        host_data["speed"] = (
+            str(getattr(hw_summary, "cpuMhz", "")) if hw_summary else ""
+        )
         # ht_available is hyperthreadingActive (True/False)
-        host_data["ht_available"] = str(getattr(hw_summary, "hyperthreadingActive", "")) if hw_summary else ""
+        host_data["ht_available"] = (
+            str(getattr(hw_summary, "hyperthreadingActive", "")) if hw_summary else ""
+        )
         host_data["ht_active"] = ""
-        host_data["num_cpu"] = str(getattr(hw_summary, "numCpuPkgs", "")) if hw_summary else ""
-        host_data["cores_per_cpu"] = str(getattr(hw_summary, "numCpuCores", "")) if hw_summary else ""
+        host_data["num_cpu"] = (
+            str(getattr(hw_summary, "numCpuPkgs", "")) if hw_summary else ""
+        )
+        host_data["cores_per_cpu"] = (
+            str(getattr(hw_summary, "numCpuCores", "")) if hw_summary else ""
+        )
         host_data["num_cores"] = ""
         host_data["cpu_usage_percent"] = ""
-        host_data["num_memory"] = str(getattr(hw_summary, "memorySize", "")) if hw_summary else ""
+        host_data["num_memory"] = (
+            str(getattr(hw_summary, "memorySize", "")) if hw_summary else ""
+        )
         host_data["memory_tiering_type"] = ""
         host_data["memory_usage_percent"] = ""
         host_data["console"] = ""
-        host_data["num_nics"] = str(getattr(hw_summary, "numNics", "")) if hw_summary else ""
-        host_data["num_hbas"] = str(getattr(hw_summary, "numHBAs", "")) if hw_summary else ""
+        host_data["num_nics"] = (
+            str(getattr(hw_summary, "numNics", "")) if hw_summary else ""
+        )
+        host_data["num_hbas"] = (
+            str(getattr(hw_summary, "numHBAs", "")) if hw_summary else ""
+        )
 
         vm_summary = (
             summary.runtime.dasHostState.vmCount if summary and summary.runtime else 0
@@ -103,7 +119,9 @@ class VHostCollector(BaseCollector):
 
         host_data["vendor"] = getattr(hw_summary, "vendor", "") if hw_summary else ""
         host_data["model"] = getattr(hw_summary, "model", "") if hw_summary else ""
-        host_data["serial_number"] = getattr(hw_summary, "serialNumber", "") if hw_summary else ""
+        host_data["serial_number"] = (
+            getattr(hw_summary, "serialNumber", "") if hw_summary else ""
+        )
         host_data["service_tag"] = ""
         host_data["oem_specific_string"] = ""
 
