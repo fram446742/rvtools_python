@@ -1,134 +1,118 @@
 """Module to read the conf file / vcenter, username and password"""
 
-import re
 import os
+import sys
+import logging
+
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+
+logger = logging.getLogger("rvtools")
 
 
 class CoreCode(object):
     """Main Class *CoreCode* responsible for read the conf file feature"""
 
     def read_conf_file(self):
-        """Definition to read the conf file rvtools.conf (single config)"""
+        """Read single vCenter config from TOML file (legacy support)"""
         home_area = os.path.expanduser("~")
+        toml_path = os.path.join(home_area, ".rvtools.toml")
 
         try:
-            fp_conf_file = open(home_area + "/.rvtools.conf", "r")
-            for line in fp_conf_file:
-                if re.search("^vcenter", line):
-                    self._vcenter = re.split("=", re.search("^vcenter", line).string)[
-                        1
-                    ].strip()
-                if re.search("^username", line):
-                    self._username = re.split("=", re.search("^username", line).string)[
-                        1
-                    ].strip()
-                if re.search("^password", line):
-                    self._password = re.split("=", re.search("^password", line).string)[
-                        1
-                    ].strip()
-                if re.search("^directory", line):
-                    self._directory = re.split(
-                        "=", re.search("^directory", line).string
-                    )[1].strip()
-                if re.search("^format", line):
-                    self._format = re.split("=", re.search("^format", line).string)[
-                        1
-                    ].strip()
-                if re.search("^threads", line):
-                    self._threads = re.split("=", re.search("^threads", line).string)[
-                        1
-                    ].strip()
-                if re.search("^verbose", line):
-                    self._verbose = re.split("=", re.search("^verbose", line).string)[
-                        1
-                    ].strip()
-
-            return self
+            with open(toml_path, "rb") as f:
+                config = tomllib.load(f)
+            
+            # Try to get default section or first available
+            if "default" in config:
+                section = config["default"]
+            elif "vcenter" in config and isinstance(config["vcenter"], str):
+                # Legacy format: top-level keys
+                section = config
+            else:
+                # Get first section
+                sections = [v for v in config.values() if isinstance(v, dict)]
+                if not sections:
+                    logger.error("No valid configuration found in ~/.rvtools.toml")
+                    return None
+                section = sections[0]
+            
+            # Validate required fields
+            if not all(k in section for k in ["vcenter", "username", "password", "directory"]):
+                logger.error("Missing required fields in config: vcenter, username, password, directory")
+                return None
+            
+            # Create object from config
+            return self._config_to_object(section)
+        
         except FileNotFoundError:
-            print(
-                "There isn't the conf file on ~/.rvtools.conf, creating a new one now"
-            )
-            print("according to the example below:")
-            print("-----------------------")
-            print("vcenter=<fqdn>")
-            print("username=<vcenter username>")
-            print("password=<password>")
-            print("directory=<directory>")
-            print("-----------------------")
-            print("")
-            print("Please update the info if you would like to persist the credentials")
-
-            template_conf_file = open(home_area + "/.rvtools.conf", "w+")
-            print("vcenter=<fqdn>", file=template_conf_file)
-            print("username=<vcenter username>", file=template_conf_file)
-            print("password=<password>", file=template_conf_file)
-            print("directory=<directory>", file=template_conf_file)
-            print("format=xlsx", file=template_conf_file)
-            print("threads=auto", file=template_conf_file)
-            print("verbose=false", file=template_conf_file)
-            template_conf_file.close()
+            return self._create_default_config()
+        except Exception as e:
+            logger.error(f"Error reading TOML config: {e}")
+            return None
 
     def read_conf_file_multi(self):
-        """Read multi-vCenter config file with TOML-like sections
+        """Read multi-vCenter config file (TOML format)
         
         Supports format:
         [vcenter1]
-        vcenter=host1.domain.com
-        username=user1
-        password=pass1
-        directory=/tmp
+        vcenter = "host1.domain.com"
+        username = "user1"
+        password = "pass1"
+        directory = "/tmp"
+        format = "xlsx"
+        threads = "8"
         
         [vcenter2]
-        vcenter=host2.domain.com
-        username=user2
-        password=pass2
-        directory=/tmp
+        vcenter = "host2.domain.com"
+        username = "user2"
+        password = "pass2"
+        directory = "/tmp"
         
-        Lines starting with # are treated as comments
+        Returns: List of config dicts, or None if file not found or invalid
         """
         home_area = os.path.expanduser("~")
-        configs = []
-        current_section = {}
+        toml_path = os.path.join(home_area, ".rvtools.toml")
 
         try:
-            with open(home_area + "/.rvtools.conf", "r") as fp_conf_file:
-                for line in fp_conf_file:
-                    # Strip whitespace and skip empty lines
-                    line = line.strip()
-                    
-                    # Skip comments
-                    if line.startswith("#") or line == "":
-                        continue
-                    
-                    # Detect section headers [name]
-                    section_match = re.match(r"^\[([^\]]+)\]$", line)
-                    if section_match:
-                        # Save previous section if it has required fields
-                        if current_section and self._validate_config(current_section):
-                            configs.append(current_section)
-                        current_section = {"_section_name": section_match.group(1)}
-                        continue
-                    
-                    # Parse key=value pairs
-                    kv_match = re.match(r"^([^=]+)=(.*)$", line)
-                    if kv_match and current_section is not None:
-                        key = kv_match.group(1).strip()
-                        value = kv_match.group(2).strip()
-                        current_section[key] = value
-                
-                # Don't forget last section
-                if current_section and self._validate_config(current_section):
-                    configs.append(current_section)
+            with open(toml_path, "rb") as f:
+                config = tomllib.load(f)
+            
+            configs = []
+            
+            # Check if this is a multi-vcenter config or legacy format
+            if "default" in config and isinstance(config["default"], dict):
+                # Multi-vCenter format with [default] and other [name] sections
+                for section_name, section_config in config.items():
+                    if isinstance(section_config, dict) and self._validate_config(section_config):
+                        section_config["_section_name"] = section_name
+                        configs.append(section_config)
+            elif "vcenter" in config and isinstance(config["vcenter"], str):
+                # Legacy single-vCenter format
+                if self._validate_config(config):
+                    config["_section_name"] = "default"
+                    configs.append(config)
+            else:
+                # All top-level items should be sections
+                for section_name, section_config in config.items():
+                    if isinstance(section_config, dict) and self._validate_config(section_config):
+                        section_config["_section_name"] = section_name
+                        configs.append(section_config)
             
             return configs if configs else None
+        
         except FileNotFoundError:
+            return None
+        except Exception as e:
+            logger.error(f"Error reading multi-vCenter TOML config: {e}")
             return None
 
     def _validate_config(self, config):
         """Check if config has minimum required fields"""
         return all(k in config for k in ["vcenter", "username", "password", "directory"])
 
-    def config_to_object(self, config_dict):
+    def _config_to_object(self, config_dict):
         """Convert config dict to CoreCode object"""
         obj = CoreCode()
         obj._vcenter = config_dict.get("vcenter", "<fqdn>")
@@ -139,3 +123,55 @@ class CoreCode(object):
         obj._threads = config_dict.get("threads", "auto")
         obj._verbose = config_dict.get("verbose", "false")
         return obj
+
+    def _create_default_config(self):
+        """Create default config file"""
+        home_area = os.path.expanduser("~")
+        toml_path = os.path.join(home_area, ".rvtools.toml")
+        
+        default_template = '''# RVTools Configuration File (TOML format)
+
+# Default vCenter configuration
+[default]
+vcenter = "<fqdn>"
+username = "<vcenter username>"
+password = "<password>"
+directory = "<directory>"
+format = "xlsx"
+threads = "auto"
+verbose = false
+
+# Additional vCenter examples (uncomment to use):
+# [production]
+# vcenter = "prod-vc.domain.com"
+# username = "admin"
+# password = "password"
+# directory = "/tmp/prod"
+# format = "xlsx"
+# threads = "16"
+
+# [development]
+# vcenter = "dev-vc.domain.com"
+# username = "admin"
+# password = "password"
+# directory = "/tmp/dev"
+# format = "csv"
+# threads = "4"
+'''
+        
+        try:
+            with open(toml_path, "w") as f:
+                f.write(default_template)
+            
+            print("RVTools configuration file created at ~/.rvtools.toml")
+            print("Please update with your vCenter details:")
+            print("-" * 50)
+            print(default_template)
+            print("-" * 50)
+            logger.info("Default config created at ~/.rvtools.toml")
+            return None
+        
+        except Exception as e:
+            logger.error(f"Failed to create default config: {e}")
+            return None
+

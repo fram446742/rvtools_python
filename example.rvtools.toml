@@ -1,0 +1,109 @@
+# RVTools Python Configuration File (TOML Format)
+# Location: ~/.rvtools.toml
+# 
+# Supports multiple vCenter configurations in separate sections.
+# Each section can have different settings (format, threads, etc.)
+
+# ============================================================
+# Default Configuration
+# ============================================================
+[default]
+vcenter = "vc.domain.com"
+username = "administrator"
+password = "your_password_here"
+directory = "/path/to/exports"
+format = "xlsx"          # Options: xlsx, csv, json-separate, json-unified
+threads = "auto"         # Options: auto (default), or number like 8, 16
+verbose = false          # Options: true, false
+
+# ============================================================
+# Production Environment
+# ============================================================
+[production]
+vcenter = "prod-vc01.corp.com"
+username = "vc_admin"
+password = "Prod_Secure_P@ss"
+directory = "/mnt/exports/production"
+format = "xlsx"
+threads = "16"           # Use more threads for large environments
+verbose = false
+
+# ============================================================
+# Staging Environment
+# ============================================================
+[staging]
+vcenter = "stage-vc.corp.com"
+username = "vc_admin"
+password = "Stage_Secure_P@ss"
+directory = "/mnt/exports/staging"
+format = "csv"           # Use CSV for data analysis
+threads = "8"
+verbose = false
+
+# ============================================================
+# Development Environment
+# ============================================================
+[development]
+vcenter = "dev-vc.corp.local"
+username = "dev_admin"
+password = "Dev_P@ss_123"
+directory = "/tmp/exports/dev"
+format = "json-unified"  # Use JSON for automation
+threads = "4"            # Use fewer threads for small lab environments
+verbose = true           # Enable verbose logging for debugging
+
+# ============================================================
+# Disaster Recovery Environment
+# ============================================================
+[dr]
+vcenter = "dr-vc.domain.com"
+username = "dr_admin"
+password = "DR_Secure_P@ss"
+directory = "/mnt/exports/dr"
+format = "xlsx"
+threads = "auto"
+verbose = false
+
+# ============================================================
+# Configuration Notes
+# ============================================================
+# 
+# 1. Required Fields (for each section):
+#    - vcenter: FQDN or IP address of vCenter
+#    - username: vCenter username
+#    - password: vCenter password
+#    - directory: Output directory (must exist)
+#
+# 2. Optional Fields (defaults apply if omitted):
+#    - format: Default is "xlsx" (Excel format)
+#    - threads: Default is "auto" (min(8, cpu_count))
+#    - verbose: Default is false
+#
+# 3. Export Formats:
+#    - xlsx: Single Excel file with all sheets (recommended)
+#    - csv: Separate CSV files for each sheet (good for analysis)
+#    - json-separate: Separate JSON files for each sheet
+#    - json-unified: Single JSON file with all sheets
+#
+# 4. Threading:
+#    - "auto": Automatically uses min(8, cpu_count)
+#    - Number: Explicit thread count (e.g., "16", "32")
+#    - Higher threads = faster collection but more CPU/memory usage
+#
+# 5. Running with Multiple Configurations:
+#    $ rvtools
+#    Processes all sections [production], [staging], [development], [dr]
+#    Creates separate export files for each vCenter
+#
+# 6. Running with Specific Sections:
+#    $ rvtools --sheets vInfo,vPartition,vHealth
+#    Collects only vInfo, vPartition, vHealth from all configured vCenters
+#
+# 7. Running with CLI Arguments (overrides config file):
+#    $ rvtools -s prod-vc.domain.com -u admin -p pass -d /tmp --sheets vInfo
+#
+# 8. Troubleshooting:
+#    - Enable verbose mode for detailed logging: verbose = true
+#    - Check log file at: /path/to/directory/rvtools_YYYY-MM-DD_HH.MM.log
+#    - Verify vCenter credentials are correct
+#    - Ensure export directory exists and is writable

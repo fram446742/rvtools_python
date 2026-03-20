@@ -276,14 +276,14 @@ def main():
         or args.password is None
         or args.directory is None
     ):
-        logger.info("Reading Conf File")
+        logger.info("Reading TOML configuration file from ~/.rvtools.toml")
         obj = CoreCode()
         
         # Try to read multi-vCenter config first
         multi_configs = obj.read_conf_file_multi()
         
         if multi_configs:
-            logger.info(f"Found {len(multi_configs)} vCenter configurations")
+            logger.info(f"Found {len(multi_configs)} vCenter configuration(s): {', '.join(c.get('_section_name', 'unknown') for c in multi_configs)}")
             configs_to_process = multi_configs
         else:
             # Fallback to single config
@@ -293,7 +293,7 @@ def main():
             
             if conn._vcenter == "<fqdn>":
                 logger.error(
-                    "You are using default values. Please update ~/.rvtools.conf"
+                    "You are using default values. Please update ~/.rvtools.toml"
                 )
                 sys.exit(1)
             
@@ -305,6 +305,7 @@ def main():
                     "directory": conn._directory,
                     "format": conn._format,
                     "threads": conn._threads,
+                    "_section_name": "default",
                 }
             ]
     else:
@@ -315,6 +316,7 @@ def main():
                 "username": args.username,
                 "password": args.password,
                 "directory": args.directory,
+                "_section_name": "cli-args",
             }
         ]
 
