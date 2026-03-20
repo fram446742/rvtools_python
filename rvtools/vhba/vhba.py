@@ -36,18 +36,40 @@ class VHBACollector(BaseCollector):
                 and host.config.storageDevice.hostBusAdapter
             ):
                 for hba in host.config.storageDevice.hostBusAdapter:
+                    # Extract HBA type from class name or deviceType
+                    hba_type = ""
+                    if hasattr(hba, 'deviceType'):
+                        hba_type = hba.deviceType or ""
+                    
+                    # Try to determine status from HBA
+                    status = ""
+                    if hasattr(hba, 'status'):
+                        status = str(hba.status) if hba.status else ""
+                    
+                    # Get model name
+                    model = ""
+                    if hasattr(hba, 'model'):
+                        model = hba.model or ""
+                    
+                    # Get WWN (World Wide Name) for FC HBAs
+                    wwn = ""
+                    if hasattr(hba, 'portWorldWideName'):
+                        wwn = str(getattr(hba, 'portWorldWideName', '')) or ""
+                    elif hasattr(hba, 'wwn'):
+                        wwn = str(hba.wwn) or ""
+                    
                     hba_data = {
                         "host": host.name or "",
                         "datacenter": self._get_datacenter(host),
                         "cluster": self._get_cluster(host),
                         "device": hba.device or "",
-                        "type": hba.deviceType or "",
-                        "status": "",
+                        "type": hba_type,
+                        "status": status,
                         "bus": str(hba.bus) if hasattr(hba, "bus") else "",
                         "pci": hba.pciId or "",
                         "driver": hba.driver or "",
-                        "model": hba.model or "",
-                        "wwn": getattr(hba, "portWorldWideName", "") or "",
+                        "model": model,
+                        "wwn": wwn,
                         "vi_sdk_server": self.content.about.apiVersion or "",
                         "vi_sdk_uuid": self.content.about.instanceUuid or "",
                     }

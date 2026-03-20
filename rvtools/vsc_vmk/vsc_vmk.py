@@ -32,6 +32,38 @@ class VSCVMKCollector(BaseCollector):
         try:
             if host.config and host.config.network and host.config.network.vnic:
                 for vnic in host.config.network.vnic:
+                    # Extract IP configuration
+                    ip_address = ""
+                    ip_6_address = ""
+                    subnet_mask = ""
+                    gateway = ""
+                    ip_6_gateway = ""
+                    dhcp = ""
+                    
+                    if vnic.spec and vnic.spec.ip:
+                        ip_address = vnic.spec.ip.ipAddress or ""
+                        subnet_mask = vnic.spec.ip.subnetMask or ""
+                        
+                        # Check for DHCP
+                        if hasattr(vnic.spec.ip, 'dhcp'):
+                            dhcp = str(vnic.spec.ip.dhcp) if vnic.spec.ip.dhcp else "False"
+                    
+                    # Get IPv6 configuration if available
+                    if vnic.spec and hasattr(vnic.spec, 'ipV6'):
+                        ipv6_config = getattr(vnic.spec, 'ipV6', None)
+                        if ipv6_config:
+                            if hasattr(ipv6_config, 'ipAddress') and ipv6_config.ipAddress:
+                                if isinstance(ipv6_config.ipAddress, list) and len(ipv6_config.ipAddress) > 0:
+                                    ip_6_address = ipv6_config.ipAddress[0].ipAddress or ""
+                    
+                    # Try to get gateway from routing config
+                    if host.config.network and host.config.network.ipRouteConfig:
+                        route_config = host.config.network.ipRouteConfig
+                        if hasattr(route_config, 'defaultGateway') and route_config.defaultGateway:
+                            gateway = route_config.defaultGateway or ""
+                        if hasattr(route_config, 'ipV6DefaultGateway') and route_config.ipV6DefaultGateway:
+                            ip_6_gateway = route_config.ipV6DefaultGateway or ""
+                    
                     vmk_data = {
                         "host": host.name or "",
                         "datacenter": self._get_datacenter(host),
@@ -39,16 +71,12 @@ class VSCVMKCollector(BaseCollector):
                         "port_group": vnic.portgroup or "",
                         "device": vnic.device or "",
                         "mac_address": vnic.mac or "",
-                        "dhcp": "",
-                        "ip_address": vnic.spec.ip.ipAddress
-                        if vnic.spec and vnic.spec.ip
-                        else "",
-                        "ip_6_address": "",
-                        "subnet_mask": vnic.spec.ip.subnetMask
-                        if vnic.spec and vnic.spec.ip
-                        else "",
-                        "gateway": "",
-                        "ip_6_gateway": "",
+                        "dhcp": dhcp,
+                        "ip_address": ip_address,
+                        "ip_6_address": ip_6_address,
+                        "subnet_mask": subnet_mask,
+                        "gateway": gateway,
+                        "ip_6_gateway": ip_6_gateway,
                         "mtu": str(vnic.spec.mtu)
                         if vnic.spec and vnic.spec.mtu
                         else "",
