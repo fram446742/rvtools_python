@@ -20,32 +20,103 @@ Ps.: Necessary python 3.9 or greater.
 - Metadata: vSource, vLicense, vFileInfo, vHealth, vMetaData
 
 ✅ **Multiple export formats:**
-- CSV (individual files, default)
+- **XLSX (default)** - All sheets in single workbook with styling
+- CSV (individual files)
 - JSON (individual files per sheet)
 - JSON (unified file with all sheets)
 
-✅ **Timestamp-based filenames** (e.g., vInfo_2026-03-20_10.37.csv)
+✅ **Parallel processing** - Multi-threaded data collection (auto-detected, min 8 threads)
 
-# How to use??
+✅ **Comprehensive logging** - Dual output to console and file with timestamps
 
-First, install the python module
-```
-$ pip install rvtools-python
+✅ **Error resilience** - Missing properties/sheets don't break collection
+
+✅ **Timestamp-based filenames** (e.g., rvtools_2026-03-20_10.37.xlsx)
+
+# How to use
+
+## Option 1: Run without installing (from repository)
+
+```bash
+cd /path/to/rvtools_python
+uv venv
+. .venv/bin/activate
+uv pip install -r requirements.txt
+python -m rvtools
 ```
 
-Now it's time to execute it.
-```
-$ rvtools
+## Option 2: Install as editable package with uv
+
+```bash
+cd /path/to/rvtools_python
+uv venv
+. .venv/bin/activate
+uv pip install -e .
+rvtools
 ```
 
-On the first run, will be created the file ~/.rvtools.conf
+## Configuration
+
+On the first run, create `~/.rvtools.conf`:
 ```
 vcenter=<fqdn>
 username=<vcenter username>
 password=<password>
 directory=<directory>
 ```
-Note. the directory above is the area where all the exported files will be saved by default.
+The directory is where all exported files will be saved.
+
+## Command-line options
+
+```bash
+rvtools --help
+```
+
+Options:
+- `-s, --host` - vCenter FQDN
+- `-u, --username` - vCenter username
+- `-p, --password` - vCenter password
+- `-d, --directory` - Output directory for exports
+- `-f, --format` - Export format (default: xlsx)
+  - `xlsx` - All sheets in single Excel workbook
+  - `csv` - Individual CSV files per sheet
+  - `json-separate` - Individual JSON files per sheet
+  - `json-unified` - All sheets in single JSON file
+- `--threads` - Number of parallel threads (default: auto = min(8, cpu_count))
+- `-v, --verbose` - Show additional info
+
+## Examples
+
+Export as XLSX (default):
+```bash
+rvtools --host vcenter.example.com --username admin --password pass --directory /export
+```
+
+Export as CSV with 4 threads:
+```bash
+rvtools -s vcenter.example.com -u admin -p pass -d /export -f csv --threads 4
+```
+
+Export as JSON unified format:
+```bash
+rvtools -s vcenter.example.com -u admin -p pass -d /export -f json-unified
+```
+
+## Output files
+
+Default XLSX output:
+- `rvtools_2026-03-20_10.37.xlsx` (contains all 27 sheets with styling)
+
+CSV format:
+- `vInfo_2026-03-20_10.37.csv`
+- `vHealth_2026-03-20_10.37.csv`
+- ... (one per sheet)
+
+JSON unified format:
+- `rvtools_2026-03-20_10.37.json` (all sheets in single file)
+
+Logs are saved to:
+- `rvtools_2026-03-20_10.37.log` (in export directory)
 
 
 You can just update the information on the file to be seamless and generate all reports without asking for the password again, or you are able to pass the information all the time as parameter
