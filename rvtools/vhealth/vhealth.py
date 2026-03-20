@@ -34,40 +34,8 @@ class VHealthCollector(BaseCollector):
         health_data["name"] = alarm.info.name or ""
         health_data["message"] = alarm.info.description or ""
 
-        # Extract alarm type from alarm object
-        alarm_type = "Unknown"
-        try:
-            # Try to get from trigger (which contains the event/metric being monitored)
-            if hasattr(alarm.info, "trigger"):
-                trigger = alarm.info.trigger
-                # For event-based alarms
-                if hasattr(trigger, "eventType"):
-                    event_type = trigger.eventType
-                    # Extract last part of event type (e.g., "vim.event.VmCreatedEvent" -> "VmCreatedEvent")
-                    if isinstance(event_type, str) and "." in event_type:
-                        alarm_type = event_type.split(".")[-1]
-                    else:
-                        alarm_type = str(event_type)
-                # For metric-based alarms
-                elif hasattr(trigger, "metricId"):
-                    metric = trigger.metricId
-                    if hasattr(metric, "key"):
-                        alarm_type = str(metric.key)
-                    elif hasattr(metric, "counterId"):
-                        alarm_type = f"metric_{metric.counterId}"
-
-            # Fallback: use alarm key
-            if alarm_type == "Unknown" and hasattr(alarm.info, "key"):
-                key = alarm.info.key
-                if key:
-                    # Extract meaningful part from key
-                    if "." in key:
-                        parts = key.split(".")
-                        alarm_type = parts[-1]
-                    else:
-                        alarm_type = key
-        except Exception:
-            pass
+        # Extract alarm type from alarm name or description
+        alarm_type = self._extract_alarm_type(alarm)
 
         health_data["message_type"] = alarm_type
 
@@ -83,3 +51,56 @@ class VHealthCollector(BaseCollector):
             "server": self.content.about.apiVersion or "",
             "uuid": self.content.about.instanceUuid or "",
         }
+
+    def _extract_alarm_type(self, alarm):
+        """
+        Extract alarm type from alarm name/description.
+        
+        Looks for known alarm type keywords in the alarm name or description.
+        Returns the alarm type (e.g., "Zombie", "Snapshots", "CDROM", etc.)
+        or the alarm key if no keywords found.
+        """
+        # Keywords to look for in alarm name/description
+        keywords = {
+            "zombie": "Zombie",
+            "snapshot": "Snapshots",
+            "cdrom": "CDROM",
+            "consolidation": "Consolidation",
+            "iscsi": "iSCSI",
+            "nfs": "NFS",
+            "datastore": "Datastore",
+            "cpu": "CPU",
+            "memory": "Memory",
+            "disk": "Disk",
+            "network": "Network",
+            "vmware": "VMware",
+            "vsan": "vSAN",
+            "vcenter": "vCenter",
+            "host": "Host",
+            "cluster": "Cluster",
+            "storage": "Storage",
+        }
+        
+        alarm_type = ""
+        
+        # Try to extract from alarm name
+        alarm_name = (alarm.info.name or "").lower()
+        alarm_desc = (alarm.info.description or "").lower()
+        
+        # Check each keyword
+        for keyword, alarm_type_name in keywords.items():
+            if keyword in alarm_name or keyword in alarm_desc:
+                alarm_type = alarm_type_name
+                break
+        
+        # If no keyword found, try to extract from alarm key
+        if not alarm_type:
+            try:
+                if hasattr(alarm.info, "key") and alarm.info.key:
+                    key = alarm.info.key
+                    # Extract meaningful part from key (e.g., "alarm-2814" stays as is)
+                    alarm_type = key
+            except Exception:
+                pass
+        
+        return alarm_type or "Unknown"
