@@ -1,0 +1,100 @@
+"""VCD collector - VM CD/DVD drive information"""
+from pyVmomi import vim
+from rvtools.collectors.base_collector import BaseCollector
+
+
+class VCDCollector(BaseCollector):
+    """Collector for vCD sheet - Virtual CD/DVD drives"""
+
+    @property
+    def sheet_name(self):
+        return "vCD"
+
+    def collect(self):
+        """Collect CD/DVD drive information from all VMs"""
+        container = self.content.rootFolder
+        view_type = [vim.VirtualMachine]
+        container_view = self.content.viewManager.CreateContainerView(
+            container, view_type, True
+        )
+
+        cd_list = []
+        
+        for vm in container_view.view:
+            vm_cds = self._collect_vm_cds(vm)
+            cd_list.extend(vm_cds)
+
+        return cd_list
+
+    def _collect_vm_cds(self, vm):
+        """Collect CD/DVD information for a single VM"""
+        cds = []
+
+        if not vm.config.hardware.device:
+            return cds
+
+        for device in vm.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualCdrom):
+                cd_data = self._collect_cd(vm, device)
+                cds.append(cd_data)
+
+        return cds
+
+    def _collect_cd(self, vm, cd_device):
+        """Collect information for a single CD/DVD drive"""
+        cd_data = {}
+
+        cd_data['vm'] = vm.name or ""
+        cd_data['powerstate'] = str(vm.runtime.powerState) if vm.runtime.powerState else ""
+        cd_data['template'] = str(vm.config.template) if vm.config.template else ""
+        cd_data['srm_placeholder'] = ""
+        
+        cd_data['device_node'] = cd_device.deviceInfo.label or ""
+        cd_data['connected'] = str(cd_device.connectable.connected) if cd_device.connectable else ""
+        cd_data['starts_connected'] = str(cd_device.connectable.startConnected) if cd_device.connectable else ""
+        cd_data['device_type'] = type(cd_device).__name__
+        
+        cd_data['annotation'] = vm.config.annotation or ""
+        cd_data['datacenter'] = self._get_datacenter(vm)
+        cd_data['cluster'] = self._get_cluster(vm)
+        cd_data['host'] = self._get_host(vm)
+        cd_data['folder'] = self._get_folder(vm)
+        cd_data['os_according_to_config'] = ""
+        cd_data['os_according_to_vmware_tools'] = vm.config.guestFullName or ""
+        cd_data['vmref'] = ""
+        cd_data['vm_id'] = vm._moId or ""
+        cd_data['vm_uuid'] = vm.config.uuid or ""
+        cd_data['vi_sdk_server'] = self.content.about.apiVersion or ""
+        cd_data['vi_sdk_uuid'] = self.content.about.instanceUuid or ""
+
+        return cd_data
+
+    def _get_datacenter(self, vm):
+        try:
+            container = self.content.viewManager.CreateContainerView(
+                self.content.rootFolder, [vim.Datacenter], True
+            )
+            return container.view[0].name if container.view else ""
+        except Exception:
+            return ""
+
+    def _get_cluster(self, vm):
+        try:
+            container = self.content.viewManager.CreateContainerView(
+                self.content.rootFolder, [vim.ClusterComputeResource], True
+            )
+            return container.view[0].name if container.view else ""
+        except Exception:
+            return ""
+
+    def _get_host(self, vm):
+        try:
+            return vm.runtime.host.name if vm.runtime.host else ""
+        except Exception:
+            return ""
+
+    def _get_folder(self, vm):
+        try:
+            return vm.parent.name if vm.parent else ""
+        except Exception:
+            return ""

@@ -1,0 +1,1 @@
+"""Vsnapshot module"""

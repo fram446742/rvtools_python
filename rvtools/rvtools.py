@@ -13,6 +13,14 @@ from rvtools.corerv import CoreCode
 from rvtools.vinfo.vinfo import VInfoCollector
 from rvtools.vhealth.vhealth import VHealthCollector
 from rvtools.vpartition.vpartition import VPartitionCollector
+from rvtools.vcpu.vcpu import VCPUCollector
+from rvtools.vmemory.vmemory import VMemoryCollector
+from rvtools.vdisk.vdisk import VDiskCollector
+from rvtools.vnetwork.vnetwork import VNetworkCollector
+from rvtools.vsnapshot.vsnapshot import VSnapshotCollector
+from rvtools.vtools.vtools import VToolsCollector
+from rvtools.vcd.vcd import VCDCollector
+from rvtools.vusb.vusb import VUSBCollector
 from rvtools.printrv.json_print import json_print_unified
 
 # requests.packages.urllib3.disable_warnings()
@@ -105,6 +113,14 @@ def main():
         VInfoCollector(service_instance, directory),
         VHealthCollector(service_instance, directory),
         VPartitionCollector(service_instance, directory),
+        VCPUCollector(service_instance, directory),
+        VMemoryCollector(service_instance, directory),
+        VDiskCollector(service_instance, directory),
+        VNetworkCollector(service_instance, directory),
+        VSnapshotCollector(service_instance, directory),
+        VToolsCollector(service_instance, directory),
+        VCDCollector(service_instance, directory),
+        VUSBCollector(service_instance, directory),
     ]
 
     for collector in collectors:
