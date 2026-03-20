@@ -33,6 +33,10 @@ def setup_logging(directory):
     """Setup logging to both stdout and file"""
     log_file = f"{directory}/rvtools_{datetime.now().strftime('%Y-%m-%d_%H.%M')}.log"
     
+    # Ensure file exists
+    with open(log_file, 'w') as f:
+        f.write(f"RVTools Log - {datetime.now()}\n")
+    
     logger = logging.getLogger('rvtools')
     logger.setLevel(logging.DEBUG)
     
