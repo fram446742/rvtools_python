@@ -9,9 +9,11 @@ import requests
 import urllib3
 from pyVim import connect
 
-from rvtools.corerv import *
-from rvtools.vinfo.vinfo import *
-
+from rvtools.corerv import CoreCode
+from rvtools.vinfo.vinfo import VInfoCollector
+from rvtools.vhealth.vhealth import VHealthCollector
+from rvtools.vpartition.vpartition import VPartitionCollector
+from rvtools.printrv.json_print import json_print_unified
 
 # requests.packages.urllib3.disable_warnings()
 urllib3.disable_warnings()
@@ -39,11 +41,17 @@ def get_args():
                         action='store',
                         help='Directory where will be saved all csv files. Should be empty')
 
+    parser.add_argument('-f', '--format',
+                        required=False,
+                        action='store',
+                        default='csv',
+                        choices=['csv', 'json-separate', 'json-unified'],
+                        help='Export format: csv, json-separate, or json-unified (default: csv)')
+
     parser.add_argument('-v', '--verbose',
                         required=False,
                         action='store',
                         help='Show additional info.')
-
 
     args = parser.parse_args()
 
@@ -77,6 +85,7 @@ def main():
         password = args.password
         directory = args.directory
 
+    export_format = args.format or 'csv'
 
     if not os.path.isdir(directory):
         print("You have to create the dir {}".format(directory))
@@ -84,15 +93,30 @@ def main():
 
     ssl_context = ssl._create_unverified_context()
 
-    print("vcenter: {}\nuser: {}\n".format(server, username))
+    print("vcenter: {}\nuser: {}\nformat: {}\n".format(server, username, export_format))
 
     service_instance = connect.SmartConnect(host=server, user=username, \
          pwd=password, port=443, sslContext=ssl_context)
 
+    unified_data = {} if export_format == 'json-unified' else None
 
-    # VM Information
-    # vinfo_collect(service_instance)
-    vinfo_collect(service_instance, directory)
+    # Run all collectors
+    collectors = [
+        VInfoCollector(service_instance, directory),
+        VHealthCollector(service_instance, directory),
+        VPartitionCollector(service_instance, directory),
+    ]
+
+    for collector in collectors:
+        collector.run(export_format, unified_data)
+
+    # Write unified JSON if requested
+    if export_format == 'json-unified' and unified_data:
+        from datetime import datetime
+        now = datetime.now()
+        timestamp = now.strftime('%Y-%m-%d_%H.%M')
+        filename = f"rvtools_{timestamp}.json"
+        json_print_unified(filename, unified_data, directory)
 
 
 # https://code.vmware.com/apis/358/vsphere
