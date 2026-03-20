@@ -5,11 +5,16 @@ import sys
 import os
 import ssl
 import argparse
-import requests
+import logging
 import urllib3
+from datetime import datetime
 from pyVim import connect
 
 from rvtools.corerv import CoreCode
+from rvtools.logging_config import setup_logging
+from rvtools.parallel_executor import ParallelCollectorExecutor
+from rvtools.printrv.xlsx_export import XlsxExporter
+from rvtools.printrv.json_print import json_print_unified
 from rvtools.vinfo.vinfo import VInfoCollector
 from rvtools.vhealth.vhealth import VHealthCollector
 from rvtools.vpartition.vpartition import VPartitionCollector
@@ -37,10 +42,10 @@ from rvtools.vsource.vsource import VSourceCollector
 from rvtools.vlicense.vlicense import VLicenseCollector
 from rvtools.vfileinfo.vfileinfo import VFileInfoCollector
 from rvtools.vmetadata.vmetadata import VMetaDataCollector
-from rvtools.printrv.json_print import json_print_unified
 
-# requests.packages.urllib3.disable_warnings()
 urllib3.disable_warnings()
+logger = logging.getLogger('rvtools')
+
 
 def get_args():
     parser = argparse.ArgumentParser(description="RVTools Python parameters")
@@ -58,73 +63,96 @@ def get_args():
     parser.add_argument('-p', '--password',
                         required=False,
                         action='store',
-                        help='vCenter username password')
+                        help='vCenter user password')
 
     parser.add_argument('-d', '--directory',
                         required=False,
                         action='store',
-                        help='Directory where will be saved all csv files. Should be empty')
+                        help='Directory where will be saved all export files')
 
     parser.add_argument('-f', '--format',
                         required=False,
                         action='store',
-                        default='csv',
-                        choices=['csv', 'json-separate', 'json-unified'],
-                        help='Export format: csv, json-separate, or json-unified (default: csv)')
+                        default='xlsx',
+                        choices=['xlsx', 'csv', 'json-separate', 'json-unified'],
+                        help='Export format: xlsx (default), csv, json-separate, json-unified')
+
+    parser.add_argument('--threads',
+                        required=False,
+                        action='store',
+                        default='auto',
+                        help='Number of threads for parallel collection (default: auto = min(8, cpu_count))')
 
     parser.add_argument('-v', '--verbose',
                         required=False,
-                        action='store',
-                        help='Show additional info.')
+                        action='store_true',
+                        help='Show additional info')
 
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 
 def main():
-    """ Def responsible to start the vCenter connection and call all report modules """
-
+    """ Main entry point """
     args = get_args()
 
+    # Get configuration
     if (args.host is None or args.username is None or args.password is None or args.directory is None):
-        print("Reading Conf File")
+        logger.info("Reading Conf File")
         obj = CoreCode()
         conn = obj.read_conf_file()
         if conn is None:
-            sys.exit()
+            sys.exit(1)
         else:
             server = conn._vcenter
             username = conn._username
             password = conn._password
             directory = conn._directory
             if server == '<fqdn>':
-                print("You are using default values. Please update the file")
-                print("~/.rvtools.conf or just pass all mandatory parameters.")
-                sys.exit()
+                logger.error("You are using default values. Please update ~/.rvtools.conf")
+                sys.exit(1)
     else:
-        print("Using flags")
         server = args.host
         username = args.username
         password = args.password
         directory = args.directory
 
-    export_format = args.format or 'csv'
+    export_format = args.format or 'xlsx'
+    
+    # Parse threads
+    if args.threads.lower() == 'auto':
+        max_workers = None
+    else:
+        try:
+            max_workers = int(args.threads)
+        except ValueError:
+            logger.error("--threads must be a number or 'auto'")
+            sys.exit(1)
+
+    # Setup logging
+    logger_instance, log_file = setup_logging(directory)
 
     if not os.path.isdir(directory):
-        print("You have to create the dir {}".format(directory))
-        sys.exit()
+        logger.error(f"Directory does not exist: {directory}")
+        sys.exit(1)
 
     ssl_context = ssl._create_unverified_context()
 
-    print("vcenter: {}\nuser: {}\nformat: {}\n".format(server, username, export_format))
+    logger.info(f"Connecting to vCenter: {server}")
+    logger.info(f"Export format: {export_format}")
 
-    service_instance = connect.SmartConnect(host=server, user=username, \
-         pwd=password, port=443, sslContext=ssl_context)
+    try:
+        service_instance = connect.SmartConnect(
+            host=server,
+            user=username,
+            pwd=password,
+            port=443,
+            sslContext=ssl_context
+        )
+    except Exception as e:
+        logger.error(f"Failed to connect to vCenter: {e}")
+        sys.exit(1)
 
-    unified_data = {} if export_format == 'json-unified' else None
-
-    # Run all collectors
+    # Create collectors
     collectors = [
         VInfoCollector(service_instance, directory),
         VHealthCollector(service_instance, directory),
@@ -155,19 +183,34 @@ def main():
         VMetaDataCollector(service_instance, directory),
     ]
 
-    for collector in collectors:
-        collector.run(export_format, unified_data)
+    # Execute collectors
+    executor = ParallelCollectorExecutor(max_workers=max_workers)
+    results = executor.execute_collectors(collectors, format_type=export_format if export_format != 'xlsx' else 'xlsx')
 
-    # Write unified JSON if requested
-    if export_format == 'json-unified' and unified_data:
-        from datetime import datetime
-        now = datetime.now()
-        timestamp = now.strftime('%Y-%m-%d_%H.%M')
-        filename = f"rvtools_{timestamp}.json"
-        json_print_unified(filename, unified_data, directory)
+    # Handle different export formats
+    if export_format == 'xlsx':
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H.%M')
+        xlsx_filename = f"rvtools_{timestamp}.xlsx"
+        exporter = XlsxExporter(xlsx_filename, directory)
+        
+        for sheet_name, data in results.items():
+            if data:
+                exporter.add_sheet(sheet_name, data)
+        
+        exporter.save()
+        logger.info(f"✓ XLSX export completed: {xlsx_filename}")
 
+    elif export_format == 'json-unified':
+        unified_data = {sheet_name: data for sheet_name, data in results.items() if data}
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H.%M')
+        json_print_unified(f"rvtools_{timestamp}.json", unified_data, directory)
 
-# https://code.vmware.com/apis/358/vsphere
+    elif export_format in ['csv', 'json-separate']:
+        logger.info(f"✓ {export_format.upper()} export completed")
+
+    logger.info(f"Log file: {log_file}")
+    logger.info("Collection completed successfully")
+
 
 if __name__ == "__main__":
     main()

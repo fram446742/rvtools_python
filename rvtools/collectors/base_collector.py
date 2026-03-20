@@ -1,6 +1,9 @@
 """Base class for all data collectors"""
 from abc import ABC, abstractmethod
 from datetime import datetime
+import logging
+
+logger = logging.getLogger('rvtools')
 
 
 class BaseCollector(ABC):
@@ -16,7 +19,11 @@ class BaseCollector(ABC):
         """
         self.service_instance = service_instance
         self.directory = directory
-        self.content = service_instance.RetrieveContent()
+        try:
+            self.content = service_instance.RetrieveContent()
+        except Exception as e:
+            logger.error(f"Failed to retrieve content: {e}")
+            self.content = None
 
     @property
     @abstractmethod
@@ -74,21 +81,30 @@ class BaseCollector(ABC):
         timestamp = now.strftime('%Y-%m-%d_%H.%M')
         return f"{self.sheet_name}_{timestamp}.{extension}"
 
-    def run(self, format_type='csv', unified_data=None):
+    def run(self, format_type='xlsx', unified_data=None):
         """
         Run collector and export data
 
         Args:
-            format_type: Export format ('csv', 'json-separate', 'json-unified')
+            format_type: Export format ('xlsx', 'csv', 'json-separate', 'json-unified')
             unified_data: Dictionary for unified JSON export
         """
-        print(f"## Processing {self.sheet_name} module")
+        try:
+            logger.debug(f"## Processing {self.sheet_name} module")
+            data = self.collect()
 
-        data = self.collect()
+            if not data:
+                logger.warning(f"No data collected for {self.sheet_name}")
+                return
 
-        if format_type == 'csv':
-            self.export_csv(data)
-        elif format_type == 'json-separate':
-            self.export_json_separate(data)
-        elif format_type == 'json-unified':
-            self.export_json_unified(data, unified_data)
+            if format_type == 'xlsx':
+                return data
+            elif format_type == 'csv':
+                self.export_csv(data)
+            elif format_type == 'json-separate':
+                self.export_json_separate(data)
+            elif format_type == 'json-unified':
+                self.export_json_unified(data, unified_data)
+        except Exception as e:
+            logger.error(f"Error processing {self.sheet_name}: {e}", exc_info=True)
+            return []
