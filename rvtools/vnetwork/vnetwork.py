@@ -2,6 +2,7 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.vm_utils import extract_vm_common_properties
 
 
 class VNetworkCollector(BaseCollector):
@@ -49,8 +50,12 @@ class VNetworkCollector(BaseCollector):
         network_data["powerstate"] = (
             str(vm.runtime.powerState) if vm.runtime.powerState else ""
         )
-        network_data["template"] = str(vm.config.template) if vm.config.template else ""
-        network_data["srm_placeholder"] = ""
+        # Extract common VM properties
+
+        common_props = extract_vm_common_properties(vm)
+
+        network_data["template"] = common_props["template"]
+        network_data["srm_placeholder"] = common_props["srm_placeholder"]
 
         network_data["nic_label"] = nic_device.deviceInfo.label or ""
         network_data["adapter"] = nic_device.deviceInfo.label or ""
@@ -83,6 +88,18 @@ class VNetworkCollector(BaseCollector):
         network_data["internal_sort_column"] = ""
 
         network_data["annotation"] = vm.config.annotation or ""
+
+
+        # Add custom metadata
+
+
+        network_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
+
+
+        network_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
+
+
+        network_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
         network_data["datacenter"] = self._get_datacenter(vm)
         network_data["cluster"] = self._get_cluster(vm)
         network_data["host"] = self._get_host(vm)

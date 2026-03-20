@@ -2,6 +2,7 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.vm_utils import extract_vm_common_properties
 
 
 class VPartitionCollector(BaseCollector):
@@ -34,6 +35,9 @@ class VPartitionCollector(BaseCollector):
         if not vm.guest or not vm.guest.disk:
             return partitions
 
+        # Extract common VM properties once
+        common_props = extract_vm_common_properties(vm)
+
         for disk_info in vm.guest.disk:
             partition_data = {}
 
@@ -41,6 +45,7 @@ class VPartitionCollector(BaseCollector):
             partition_data["powerstate"] = (
                 str(vm.runtime.powerState) if vm.runtime.powerState else ""
             )
+            partition_data["template"] = common_props["template"]
             partition_data["disk_key"] = getattr(disk_info, "key", "") or ""
             partition_data["disk"] = disk_info.diskPath or ""
 
@@ -66,6 +71,10 @@ class VPartitionCollector(BaseCollector):
                 partition_data["free_percent"] = ""
 
             partition_data["annotation"] = vm.config.annotation or ""
+            # Add custom metadata
+            partition_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
+            partition_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
+            partition_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
             partition_data["datacenter"] = self._get_datacenter(vm)
             partition_data["cluster"] = self._get_cluster(vm)
             partition_data["host"] = self._get_host(vm)

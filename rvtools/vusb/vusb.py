@@ -2,6 +2,7 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.vm_utils import extract_vm_common_properties
 from rvtools.cache_utils import ViewCache, get_parent_object
 
 
@@ -52,8 +53,12 @@ class VUSBCollector(BaseCollector):
         usb_data["powerstate"] = (
             str(vm.runtime.powerState) if vm.runtime.powerState else ""
         )
-        usb_data["template"] = str(vm.config.template) if vm.config.template else ""
-        usb_data["srm_placeholder"] = ""
+        # Extract common VM properties
+
+        common_props = extract_vm_common_properties(vm)
+
+        usb_data["template"] = common_props["template"]
+        usb_data["srm_placeholder"] = common_props["srm_placeholder"]
 
         usb_data["device_node"] = usb_device.deviceInfo.label or ""
         usb_data["device_type"] = type(usb_device).__name__
@@ -70,6 +75,18 @@ class VUSBCollector(BaseCollector):
         usb_data["unit_number"] = ""
 
         usb_data["annotation"] = vm.config.annotation or ""
+
+
+        # Add custom metadata
+
+
+        usb_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
+
+
+        usb_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
+
+
+        usb_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
         usb_data["datacenter"] = self._get_datacenter(vm)
         usb_data["cluster"] = self._get_cluster(vm)
         usb_data["host"] = self._get_host(vm)

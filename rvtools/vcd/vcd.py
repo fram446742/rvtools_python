@@ -2,6 +2,7 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.vm_utils import extract_vm_common_properties
 
 
 class VCDCollector(BaseCollector):
@@ -49,8 +50,12 @@ class VCDCollector(BaseCollector):
         cd_data["powerstate"] = (
             str(vm.runtime.powerState) if vm.runtime.powerState else ""
         )
-        cd_data["template"] = str(vm.config.template) if vm.config.template else ""
-        cd_data["srm_placeholder"] = ""
+        # Extract common VM properties
+
+        common_props = extract_vm_common_properties(vm)
+
+        cd_data["template"] = common_props["template"]
+        cd_data["srm_placeholder"] = common_props["srm_placeholder"]
 
         cd_data["device_node"] = cd_device.deviceInfo.label or ""
         cd_data["connected"] = (
@@ -62,6 +67,18 @@ class VCDCollector(BaseCollector):
         cd_data["device_type"] = type(cd_device).__name__
 
         cd_data["annotation"] = vm.config.annotation or ""
+
+
+        # Add custom metadata
+
+
+        cd_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
+
+
+        cd_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
+
+
+        cd_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
         cd_data["datacenter"] = self._get_datacenter(vm)
         cd_data["cluster"] = self._get_cluster(vm)
         cd_data["host"] = self._get_host(vm)

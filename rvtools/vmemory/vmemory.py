@@ -2,6 +2,7 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.vm_utils import extract_vm_common_properties
 
 
 class VMemoryCollector(BaseCollector):
@@ -35,8 +36,11 @@ class VMemoryCollector(BaseCollector):
         memory_data["powerstate"] = (
             str(vm.runtime.powerState) if vm.runtime.powerState else ""
         )
-        memory_data["template"] = str(vm.config.template) if vm.config.template else ""
-        memory_data["srm_placeholder"] = ""
+        
+        # Extract common VM properties
+        common_props = extract_vm_common_properties(vm)
+        memory_data["template"] = common_props["template"]
+        memory_data["srm_placeholder"] = common_props["srm_placeholder"]
 
         memory_data["size_mib"] = (
             str(vm.config.hardware.memoryMB) if vm.config.hardware.memoryMB else ""
@@ -74,6 +78,10 @@ class VMemoryCollector(BaseCollector):
         memory_data["hot_add"] = ""
 
         memory_data["annotation"] = vm.config.annotation or ""
+        # Add custom metadata
+        memory_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
+        memory_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
+        memory_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
         memory_data["datacenter"] = self._get_datacenter(vm)
         memory_data["cluster"] = self._get_cluster(vm)
         memory_data["host"] = self._get_host(vm)

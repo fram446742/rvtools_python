@@ -3,6 +3,7 @@
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 from rvtools.cache_utils import ViewCache
+from rvtools.vm_utils import extract_vm_common_properties
 
 
 class VInfoCollector(BaseCollector):
@@ -37,7 +38,12 @@ class VInfoCollector(BaseCollector):
         vinfo_data["powerstate"] = (
             str(vm.runtime.powerState) if vm.runtime.powerState else ""
         )
-        vinfo_data["template"] = str(vm.config.template) if vm.config.template else ""
+        
+        # Extract common VM properties
+        common_props = extract_vm_common_properties(vm)
+        vinfo_data["template"] = common_props["template"]
+        vinfo_data["srm_placeholder"] = common_props["srm_placeholder"]
+        
         vinfo_data["config_status"] = str(vm.configStatus) if vm.configStatus else ""
         vinfo_data["dns_name"] = vm.guest.hostName or ""
         vinfo_data["connection_state"] = (
@@ -108,6 +114,11 @@ class VInfoCollector(BaseCollector):
         vinfo_data["os_according_to_the_vmware_tools"] = vm.config.guestFullName or ""
         vinfo_data["vm_id"] = vm._moId or ""
         vinfo_data["vm_uuid"] = vm.config.uuid or ""
+        
+        # Add custom metadata
+        vinfo_data["com_emc_avamar_vmware_snapshot"] = common_props.get("com_emc_avamar_vmware_snapshot", "")
+        vinfo_data["com_vmware_vdp2_is_protected"] = common_props.get("com_vmware_vdp2_is_protected", "")
+        vinfo_data["com_vmware_vdp2_protected_by"] = common_props.get("com_vmware_vdp2_protected_by", "")
 
         return vinfo_data
 
