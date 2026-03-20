@@ -32,10 +32,15 @@ class VNetworkCollector(BaseCollector):
         if not vm.config.hardware.device:
             return networks
 
-        for device in vm.config.hardware.device:
-            if isinstance(device, vim.vm.device.VirtualEthernetCard):
-                network_data = self._collect_nic(vm, device)
-                networks.append(network_data)
+        # Filter to only VirtualEthernetCard devices before iterating
+        nic_devices = [
+            device for device in vm.config.hardware.device
+            if isinstance(device, vim.vm.device.VirtualEthernetCard)
+        ]
+
+        for nic_device in nic_devices:
+            network_data = self._collect_nic(vm, nic_device)
+            networks.append(network_data)
 
         return networks
 

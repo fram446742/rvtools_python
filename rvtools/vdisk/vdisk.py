@@ -32,10 +32,15 @@ class VDiskCollector(BaseCollector):
         if not vm.config.hardware.device:
             return disks
 
-        for device in vm.config.hardware.device:
-            if isinstance(device, vim.vm.device.VirtualDisk):
-                disk_data = self._collect_disk(vm, device)
-                disks.append(disk_data)
+        # Filter to only VirtualDisk devices before iterating
+        disk_devices = [
+            device for device in vm.config.hardware.device
+            if isinstance(device, vim.vm.device.VirtualDisk)
+        ]
+
+        for disk_device in disk_devices:
+            disk_data = self._collect_disk(vm, disk_device)
+            disks.append(disk_data)
 
         return disks
 

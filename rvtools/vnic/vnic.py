@@ -28,6 +28,14 @@ class VNICCollector(BaseCollector):
         nics = []
         try:
             if host.config and host.config.network and host.config.network.pnic:
+                # Pre-filter vswitches that have nicDevice mapping
+                vswitches_with_bridges = []
+                if host.config.network.vswitch:
+                    vswitches_with_bridges = [
+                        vswitch for vswitch in host.config.network.vswitch
+                        if vswitch.spec and vswitch.spec.bridge and hasattr(vswitch.spec.bridge, "nicDevice")
+                    ]
+
                 for nic in host.config.network.pnic:
                     # Get driver info
                     driver = ""
@@ -49,18 +57,14 @@ class VNICCollector(BaseCollector):
                             else ""
                         )
 
-                    # Try to find vswitch membership
+                    # Find vswitch membership
                     switch_name = ""
                     uplink_port = ""
-                    if host.config.network.vswitch:
-                        for vswitch in host.config.network.vswitch:
-                            if vswitch.spec and vswitch.spec.bridge:
-                                # Check if NIC is part of this bridge
-                                if hasattr(vswitch.spec.bridge, "nicDevice"):
-                                    if nic.device in vswitch.spec.bridge.nicDevice:
-                                        switch_name = vswitch.name or ""
-                                        uplink_port = nic.device or ""
-                                        break
+                    for vswitch in vswitches_with_bridges:
+                        if nic.device in vswitch.spec.bridge.nicDevice:
+                            switch_name = vswitch.name or ""
+                            uplink_port = nic.device or ""
+                            break
 
                     nic_data = {
                         "host": host.name or "",
