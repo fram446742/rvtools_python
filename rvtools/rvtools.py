@@ -33,6 +33,10 @@ from rvtools.vport.vport import VPortCollector
 from rvtools.dvswitch.dvswitch import DVSwitchCollector
 from rvtools.dvport.dvport import DVPortCollector
 from rvtools.vsc_vmk.vsc_vmk import VSCVMKCollector
+from rvtools.vsource.vsource import VSourceCollector
+from rvtools.vlicense.vlicense import VLicenseCollector
+from rvtools.vfileinfo.vfileinfo import VFileInfoCollector
+from rvtools.vmetadata.vmetadata import VMetaDataCollector
 from rvtools.printrv.json_print import json_print_unified
 
 # requests.packages.urllib3.disable_warnings()
@@ -145,6 +149,10 @@ def main():
         DVSwitchCollector(service_instance, directory),
         DVPortCollector(service_instance, directory),
         VSCVMKCollector(service_instance, directory),
+        VSourceCollector(service_instance, directory),
+        VLicenseCollector(service_instance, directory),
+        VFileInfoCollector(service_instance, directory),
+        VMetaDataCollector(service_instance, directory),
     ]
 
     for collector in collectors:
