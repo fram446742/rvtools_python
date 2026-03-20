@@ -34,9 +34,23 @@ class VHealthCollector(BaseCollector):
         health_data["name"] = alarm.info.name or ""
         health_data["message"] = alarm.info.description or ""
 
+        # Extract alarm type from key (e.g., "com.vmware.vc.vm.VmOrphanedEvent" -> "Orphaned")
         alarm_type = "Unknown"
-        if hasattr(alarm.info, "alarm"):
-            alarm_type = type(alarm.info.alarm).__name__
+        try:
+            if hasattr(alarm.info, "key") and alarm.info.key:
+                key = alarm.info.key
+                # Extract meaningful part from key
+                if "." in key:
+                    parts = key.split(".")
+                    alarm_type = parts[-1]  # Last part after final dot
+                else:
+                    alarm_type = key
+            # Try to get from alarm expression if available
+            if hasattr(alarm.info, "alarm") and hasattr(alarm.info.alarm, "expression"):
+                if hasattr(alarm.info.alarm.expression, "elementName"):
+                    alarm_type = alarm.info.alarm.expression.elementName or alarm_type
+        except Exception:
+            pass
 
         health_data["message_type"] = alarm_type
 

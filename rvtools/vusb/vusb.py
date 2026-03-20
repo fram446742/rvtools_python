@@ -2,10 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache, get_parent_object
 
 
 class VUSBCollector(BaseCollector):
     """Collector for vUSB sheet - Virtual USB devices"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -13,15 +19,11 @@ class VUSBCollector(BaseCollector):
 
     def collect(self):
         """Collect USB device information from all VMs"""
-        container = self.content.rootFolder
-        view_type = [vim.VirtualMachine]
-        container_view = self.content.viewManager.CreateContainerView(
-            container, view_type, True
-        )
-
         usb_list = []
 
-        for vm in container_view.view:
+        # Get all VMs using cached view
+        vms = self.view_cache.get_list([vim.VirtualMachine])
+        for vm in vms:
             vm_usbs = self._collect_vm_usbs(vm)
             usb_list.extend(vm_usbs)
 
@@ -35,10 +37,8 @@ class VUSBCollector(BaseCollector):
             return usbs
 
         for device in vm.config.hardware.device:
-            if isinstance(
-                device,
-                (vim.vm.device.VirtualUSBController, vim.vm.device.VirtualUSBDevice),
-            ):
+            # Check for VirtualUSBController only
+            if type(device).__name__ in ("VirtualUSBController",):
                 usb_data = self._collect_usb(vm, device)
                 usbs.append(usb_data)
 
@@ -85,30 +85,30 @@ class VUSBCollector(BaseCollector):
         return usb_data
 
     def _get_datacenter(self, vm):
+        """Get datacenter name using cached view"""
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder, [vim.Datacenter], True
-            )
-            return container.view[0].name if container.view else ""
+            datacenters = self.view_cache.get_list([vim.Datacenter])
+            return datacenters[0].name if datacenters else ""
         except Exception:
             return ""
 
     def _get_cluster(self, vm):
+        """Get cluster name using cached view"""
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder, [vim.ClusterComputeResource], True
-            )
-            return container.view[0].name if container.view else ""
+            clusters = self.view_cache.get_list([vim.ClusterComputeResource])
+            return clusters[0].name if clusters else ""
         except Exception:
             return ""
 
     def _get_host(self, vm):
+        """Get host name"""
         try:
             return vm.runtime.host.name if vm.runtime.host else ""
         except Exception:
             return ""
 
     def _get_folder(self, vm):
+        """Get folder name"""
         try:
             return vm.parent.name if vm.parent else ""
         except Exception:

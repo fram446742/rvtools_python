@@ -2,10 +2,16 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache
 
 
 class VHostCollector(BaseCollector):
     """Collector for vHost sheet - ESXi Hosts"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -15,13 +21,9 @@ class VHostCollector(BaseCollector):
         """Collect host information from vCenter"""
         host_list = []
 
-        container = self.content.rootFolder
-        view_type = [vim.HostSystem]
-        container_view = self.content.viewManager.CreateContainerView(
-            container, view_type, True
-        )
-
-        for host in container_view.view:
+        # Get all hosts using cached view
+        hosts = self.view_cache.get_list([vim.HostSystem])
+        for host in hosts:
             host_data = self._collect_host(host)
             host_list.append(host_data)
 
@@ -32,7 +34,7 @@ class VHostCollector(BaseCollector):
         host_data = {}
 
         host_data["host"] = host.name or ""
-        host_data["datacenter"] = self._get_datacenter(host)
+        host_data["datacenter"] = self._get_datacenter()
         host_data["cluster"] = self._get_cluster(host)
         host_data["config_status"] = str(host.configStatus) if host.configStatus else ""
         host_data["compliance_check_state"] = ""
@@ -45,20 +47,21 @@ class VHostCollector(BaseCollector):
         summary = host.summary if host.summary else None
         hw_summary = summary.hardware if summary else None
 
-        host_data["cpu_model"] = hw_summary.cpuModel if hw_summary else ""
-        host_data["speed"] = str(hw_summary.cpuMhz) if hw_summary else ""
-        host_data["ht_available"] = str(hw_summary.cpuBusHz) if hw_summary else ""
+        host_data["cpu_model"] = getattr(hw_summary, "cpuModel", "") if hw_summary else ""
+        host_data["speed"] = str(getattr(hw_summary, "cpuMhz", "")) if hw_summary else ""
+        # ht_available is hyperthreadingActive (True/False)
+        host_data["ht_available"] = str(getattr(hw_summary, "hyperthreadingActive", "")) if hw_summary else ""
         host_data["ht_active"] = ""
-        host_data["num_cpu"] = str(hw_summary.numCpuPkgs) if hw_summary else ""
-        host_data["cores_per_cpu"] = str(hw_summary.numCpuCores) if hw_summary else ""
+        host_data["num_cpu"] = str(getattr(hw_summary, "numCpuPkgs", "")) if hw_summary else ""
+        host_data["cores_per_cpu"] = str(getattr(hw_summary, "numCpuCores", "")) if hw_summary else ""
         host_data["num_cores"] = ""
         host_data["cpu_usage_percent"] = ""
-        host_data["num_memory"] = str(hw_summary.memorySize) if hw_summary else ""
+        host_data["num_memory"] = str(getattr(hw_summary, "memorySize", "")) if hw_summary else ""
         host_data["memory_tiering_type"] = ""
         host_data["memory_usage_percent"] = ""
         host_data["console"] = ""
-        host_data["num_nics"] = str(hw_summary.numNics) if hw_summary else ""
-        host_data["num_hbas"] = str(hw_summary.numHBAs) if hw_summary else ""
+        host_data["num_nics"] = str(getattr(hw_summary, "numNics", "")) if hw_summary else ""
+        host_data["num_hbas"] = str(getattr(hw_summary, "numHBAs", "")) if hw_summary else ""
 
         vm_summary = (
             summary.runtime.dasHostState.vmCount if summary and summary.runtime else 0
@@ -98,9 +101,9 @@ class VHostCollector(BaseCollector):
         host_data["time_zone_name"] = ""
         host_data["gmt_offset"] = ""
 
-        host_data["vendor"] = hw_summary.vendor if hw_summary else ""
-        host_data["model"] = hw_summary.model if hw_summary else ""
-        host_data["serial_number"] = hw_summary.serialNumber if hw_summary else ""
+        host_data["vendor"] = getattr(hw_summary, "vendor", "") if hw_summary else ""
+        host_data["model"] = getattr(hw_summary, "model", "") if hw_summary else ""
+        host_data["serial_number"] = getattr(hw_summary, "serialNumber", "") if hw_summary else ""
         host_data["service_tag"] = ""
         host_data["oem_specific_string"] = ""
 
@@ -121,16 +124,16 @@ class VHostCollector(BaseCollector):
 
         return host_data
 
-    def _get_datacenter(self, host):
+    def _get_datacenter(self):
+        """Get datacenter name using cached view"""
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder, [vim.Datacenter], True
-            )
-            return container.view[0].name if container.view else ""
+            datacenters = self.view_cache.get_list([vim.Datacenter])
+            return datacenters[0].name if datacenters else ""
         except Exception:
             return ""
 
     def _get_cluster(self, host):
+        """Get cluster name from host parent"""
         try:
             if hasattr(host, "parent") and host.parent:
                 return host.parent.name
