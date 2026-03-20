@@ -1,4 +1,5 @@
 """Module for exporting data to XLSX format with multiple sheets"""
+
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from datetime import datetime
@@ -26,7 +27,9 @@ class XlsxExporter:
         headers = list(data[0].keys())
 
         # Write headers with styling
-        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_fill = PatternFill(
+            start_color="4472C4", end_color="4472C4", fill_type="solid"
+        )
         header_font = Font(bold=True, color="FFFFFF")
 
         for col_idx, header in enumerate(headers, 1):
@@ -34,14 +37,18 @@ class XlsxExporter:
             cell.value = header
             cell.fill = header_fill
             cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.alignment = Alignment(
+                horizontal="center", vertical="center", wrap_text=True
+            )
 
         # Write data rows
         for row_idx, row_data in enumerate(data, 2):
             for col_idx, header in enumerate(headers, 1):
                 cell = sheet.cell(row=row_idx, column=col_idx)
                 cell.value = row_data.get(header, "")
-                cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=False)
+                cell.alignment = Alignment(
+                    horizontal="left", vertical="top", wrap_text=False
+                )
 
         # Auto-adjust column widths
         for col_idx, header in enumerate(headers, 1):
@@ -52,7 +59,9 @@ class XlsxExporter:
                         max_length = max(max_length, len(str(cell.value)))
 
             adjusted_width = min(max_length + 2, 50)
-            sheet.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = adjusted_width
+            sheet.column_dimensions[
+                openpyxl.utils.get_column_letter(col_idx)
+            ].width = adjusted_width
 
         # Freeze header row
         sheet.freeze_panes = "A2"

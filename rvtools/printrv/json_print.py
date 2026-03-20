@@ -1,4 +1,5 @@
 """Module responsible for exporting data as JSON files"""
+
 import json
 
 
@@ -15,7 +16,7 @@ def json_print_separate(filename, data, directory):
 
     print(f"## Creating {full_file_path} file.")
 
-    with open(full_file_path, 'w') as f:
+    with open(full_file_path, "w") as f:
         json.dump(data, f, indent=2, default=str)
 
 
@@ -32,5 +33,5 @@ def json_print_unified(filename, unified_data, directory):
 
     print(f"## Creating unified {full_file_path} file.")
 
-    with open(full_file_path, 'w') as f:
+    with open(full_file_path, "w") as f:
         json.dump(unified_data, f, indent=2, default=str)

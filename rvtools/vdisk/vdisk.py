@@ -1,4 +1,5 @@
 """VDisk collector - Disk configuration and performance"""
+
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -19,7 +20,7 @@ class VDiskCollector(BaseCollector):
         )
 
         disk_list = []
-        
+
         for vm in container_view.view:
             vm_disks = self._collect_vm_disks(vm)
             disk_list.extend(vm_disks)
@@ -44,53 +45,55 @@ class VDiskCollector(BaseCollector):
         """Collect information for a single disk"""
         disk_data = {}
 
-        disk_data['vm'] = vm.name or ""
-        disk_data['powerstate'] = str(vm.runtime.powerState) if vm.runtime.powerState else ""
-        disk_data['template'] = str(vm.config.template) if vm.config.template else ""
-        disk_data['srm_placeholder'] = ""
-        
-        disk_data['disk'] = disk_device.deviceInfo.label or ""
-        disk_data['disk_key'] = str(disk_device.key) if disk_device.key else ""
-        disk_data['disk_uuid'] = getattr(disk_device.backing, 'uuid', '') or ""
-        disk_data['disk_path'] = getattr(disk_device.backing, 'fileName', '') or ""
-        
-        capacity_kb = getattr(disk_device.backing, 'capacityInKB', 0) or 0
-        disk_data['capacity_mib'] = str(capacity_kb // 1024) if capacity_kb else ""
-        
-        disk_data['raw'] = ""
-        disk_data['disk_mode'] = getattr(disk_device.backing, 'diskMode', '') or ""
-        disk_data['sharing_mode'] = getattr(disk_device, 'shares', None) or ""
-        disk_data['thin'] = ""
-        disk_data['eagerly_scrub'] = ""
-        disk_data['split'] = ""
-        disk_data['write_through'] = ""
-        
-        disk_data['level'] = ""
-        disk_data['shares'] = ""
-        disk_data['reservation'] = ""
-        disk_data['limit'] = ""
-        
-        disk_data['controller'] = ""
-        disk_data['label'] = disk_device.deviceInfo.label or ""
-        disk_data['scsi_unit'] = ""
-        disk_data['unit'] = ""
-        disk_data['shared_bus'] = ""
-        disk_data['path'] = getattr(disk_device.backing, 'fileName', '') or ""
-        disk_data['raw_lun_id'] = ""
-        disk_data['raw_comp_mode'] = ""
-        disk_data['internal_sort_column'] = ""
-        
-        disk_data['annotation'] = vm.config.annotation or ""
-        disk_data['datacenter'] = self._get_datacenter(vm)
-        disk_data['cluster'] = self._get_cluster(vm)
-        disk_data['host'] = self._get_host(vm)
-        disk_data['folder'] = self._get_folder(vm)
-        disk_data['os_according_to_config'] = ""
-        disk_data['os_according_to_vmware_tools'] = vm.config.guestFullName or ""
-        disk_data['vm_id'] = vm._moId or ""
-        disk_data['vm_uuid'] = vm.config.uuid or ""
-        disk_data['vi_sdk_server'] = self.content.about.apiVersion or ""
-        disk_data['vi_sdk_uuid'] = self.content.about.instanceUuid or ""
+        disk_data["vm"] = vm.name or ""
+        disk_data["powerstate"] = (
+            str(vm.runtime.powerState) if vm.runtime.powerState else ""
+        )
+        disk_data["template"] = str(vm.config.template) if vm.config.template else ""
+        disk_data["srm_placeholder"] = ""
+
+        disk_data["disk"] = disk_device.deviceInfo.label or ""
+        disk_data["disk_key"] = str(disk_device.key) if disk_device.key else ""
+        disk_data["disk_uuid"] = getattr(disk_device.backing, "uuid", "") or ""
+        disk_data["disk_path"] = getattr(disk_device.backing, "fileName", "") or ""
+
+        capacity_kb = getattr(disk_device.backing, "capacityInKB", 0) or 0
+        disk_data["capacity_mib"] = str(capacity_kb // 1024) if capacity_kb else ""
+
+        disk_data["raw"] = ""
+        disk_data["disk_mode"] = getattr(disk_device.backing, "diskMode", "") or ""
+        disk_data["sharing_mode"] = getattr(disk_device, "shares", None) or ""
+        disk_data["thin"] = ""
+        disk_data["eagerly_scrub"] = ""
+        disk_data["split"] = ""
+        disk_data["write_through"] = ""
+
+        disk_data["level"] = ""
+        disk_data["shares"] = ""
+        disk_data["reservation"] = ""
+        disk_data["limit"] = ""
+
+        disk_data["controller"] = ""
+        disk_data["label"] = disk_device.deviceInfo.label or ""
+        disk_data["scsi_unit"] = ""
+        disk_data["unit"] = ""
+        disk_data["shared_bus"] = ""
+        disk_data["path"] = getattr(disk_device.backing, "fileName", "") or ""
+        disk_data["raw_lun_id"] = ""
+        disk_data["raw_comp_mode"] = ""
+        disk_data["internal_sort_column"] = ""
+
+        disk_data["annotation"] = vm.config.annotation or ""
+        disk_data["datacenter"] = self._get_datacenter(vm)
+        disk_data["cluster"] = self._get_cluster(vm)
+        disk_data["host"] = self._get_host(vm)
+        disk_data["folder"] = self._get_folder(vm)
+        disk_data["os_according_to_config"] = ""
+        disk_data["os_according_to_vmware_tools"] = vm.config.guestFullName or ""
+        disk_data["vm_id"] = vm._moId or ""
+        disk_data["vm_uuid"] = vm.config.uuid or ""
+        disk_data["vi_sdk_server"] = self.content.about.apiVersion or ""
+        disk_data["vi_sdk_uuid"] = self.content.about.instanceUuid or ""
 
         return disk_data
 

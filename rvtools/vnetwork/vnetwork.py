@@ -1,4 +1,5 @@
 """VNetwork collector - VM network configuration"""
+
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -19,7 +20,7 @@ class VNetworkCollector(BaseCollector):
         )
 
         network_list = []
-        
+
         for vm in container_view.view:
             vm_networks = self._collect_vm_networks(vm)
             network_list.extend(vm_networks)
@@ -44,44 +45,54 @@ class VNetworkCollector(BaseCollector):
         """Collect information for a single NIC"""
         network_data = {}
 
-        network_data['vm'] = vm.name or ""
-        network_data['powerstate'] = str(vm.runtime.powerState) if vm.runtime.powerState else ""
-        network_data['template'] = str(vm.config.template) if vm.config.template else ""
-        network_data['srm_placeholder'] = ""
-        
-        network_data['nic_label'] = nic_device.deviceInfo.label or ""
-        network_data['adapter'] = nic_device.deviceInfo.label or ""
-        
-        if hasattr(nic_device, 'backing') and nic_device.backing:
-            if hasattr(nic_device.backing, 'network'):
-                network_data['network'] = nic_device.backing.network.name if nic_device.backing.network else ""
+        network_data["vm"] = vm.name or ""
+        network_data["powerstate"] = (
+            str(vm.runtime.powerState) if vm.runtime.powerState else ""
+        )
+        network_data["template"] = str(vm.config.template) if vm.config.template else ""
+        network_data["srm_placeholder"] = ""
+
+        network_data["nic_label"] = nic_device.deviceInfo.label or ""
+        network_data["adapter"] = nic_device.deviceInfo.label or ""
+
+        if hasattr(nic_device, "backing") and nic_device.backing:
+            if hasattr(nic_device.backing, "network"):
+                network_data["network"] = (
+                    nic_device.backing.network.name
+                    if nic_device.backing.network
+                    else ""
+                )
             else:
-                network_data['network'] = ""
+                network_data["network"] = ""
         else:
-            network_data['network'] = ""
-        
-        network_data['switch'] = ""
-        network_data['connected'] = str(nic_device.connectable.connected) if nic_device.connectable else ""
-        network_data['starts_connected'] = str(nic_device.connectable.startConnected) if nic_device.connectable else ""
-        network_data['mac_address'] = nic_device.macAddress or ""
-        network_data['type'] = type(nic_device).__name__
-        
-        network_data['ipv4_address'] = self._get_ipv4(vm)
-        network_data['ipv6_address'] = self._get_ipv6(vm)
-        network_data['direct_path_io'] = ""
-        network_data['internal_sort_column'] = ""
-        
-        network_data['annotation'] = vm.config.annotation or ""
-        network_data['datacenter'] = self._get_datacenter(vm)
-        network_data['cluster'] = self._get_cluster(vm)
-        network_data['host'] = self._get_host(vm)
-        network_data['folder'] = self._get_folder(vm)
-        network_data['os_according_to_config'] = ""
-        network_data['os_according_to_vmware_tools'] = vm.config.guestFullName or ""
-        network_data['vm_id'] = vm._moId or ""
-        network_data['vm_uuid'] = vm.config.uuid or ""
-        network_data['vi_sdk_server'] = self.content.about.apiVersion or ""
-        network_data['vi_sdk_uuid'] = self.content.about.instanceUuid or ""
+            network_data["network"] = ""
+
+        network_data["switch"] = ""
+        network_data["connected"] = (
+            str(nic_device.connectable.connected) if nic_device.connectable else ""
+        )
+        network_data["starts_connected"] = (
+            str(nic_device.connectable.startConnected) if nic_device.connectable else ""
+        )
+        network_data["mac_address"] = nic_device.macAddress or ""
+        network_data["type"] = type(nic_device).__name__
+
+        network_data["ipv4_address"] = self._get_ipv4(vm)
+        network_data["ipv6_address"] = self._get_ipv6(vm)
+        network_data["direct_path_io"] = ""
+        network_data["internal_sort_column"] = ""
+
+        network_data["annotation"] = vm.config.annotation or ""
+        network_data["datacenter"] = self._get_datacenter(vm)
+        network_data["cluster"] = self._get_cluster(vm)
+        network_data["host"] = self._get_host(vm)
+        network_data["folder"] = self._get_folder(vm)
+        network_data["os_according_to_config"] = ""
+        network_data["os_according_to_vmware_tools"] = vm.config.guestFullName or ""
+        network_data["vm_id"] = vm._moId or ""
+        network_data["vm_uuid"] = vm.config.uuid or ""
+        network_data["vi_sdk_server"] = self.content.about.apiVersion or ""
+        network_data["vi_sdk_uuid"] = self.content.about.instanceUuid or ""
 
         return network_data
 
@@ -92,7 +103,7 @@ class VNetworkCollector(BaseCollector):
                 for net_info in vm.guest.net:
                     if net_info.ipConfig and net_info.ipConfig.ipAddress:
                         for ip_config in net_info.ipConfig.ipAddress:
-                            if ':' not in ip_config.ipAddress:
+                            if ":" not in ip_config.ipAddress:
                                 return ip_config.ipAddress
         except Exception:
             pass
@@ -105,7 +116,7 @@ class VNetworkCollector(BaseCollector):
                 for net_info in vm.guest.net:
                     if net_info.ipConfig and net_info.ipConfig.ipAddress:
                         for ip_config in net_info.ipConfig.ipAddress:
-                            if ':' in ip_config.ipAddress:
+                            if ":" in ip_config.ipAddress:
                                 return ip_config.ipAddress
         except Exception:
             pass

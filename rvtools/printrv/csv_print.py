@@ -1,4 +1,5 @@
-""" Module responsible to save the content as csv file """
+"""Module responsible to save the content as csv file"""
+
 import csv
 
 
@@ -12,11 +13,11 @@ def csv_print(module_name, server_list, directory):
     automatically.
     """
 
-    full_file_path = directory+"/"+module_name
+    full_file_path = directory + "/" + module_name
 
     print("## Creating {} file.".format(full_file_path))
 
-    with open(full_file_path, 'w', newline='') as f:
+    with open(full_file_path, "w", newline="") as f:
         fieldnames = server_list[0].keys()
         thewriter = csv.DictWriter(f, fieldnames=fieldnames)
         thewriter.writeheader()

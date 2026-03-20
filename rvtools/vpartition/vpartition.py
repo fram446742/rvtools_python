@@ -1,4 +1,5 @@
 """VPartition collector - VM disk partitions information"""
+
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -19,7 +20,7 @@ class VPartitionCollector(BaseCollector):
         )
 
         partition_list = []
-        
+
         for vm in container_view.view:
             vm_partitions = self._collect_vm_partitions(vm)
             partition_list.extend(vm_partitions)
@@ -36,35 +37,47 @@ class VPartitionCollector(BaseCollector):
         for disk_info in vm.guest.disk:
             partition_data = {}
 
-            partition_data['vm'] = vm.name or ""
-            partition_data['powerstate'] = str(vm.runtime.powerState) if vm.runtime.powerState else ""
-            partition_data['disk_key'] = getattr(disk_info, 'key', "") or ""
-            partition_data['disk'] = disk_info.diskPath or ""
-            
-            capacity_mb = getattr(disk_info, 'capacity', 0) or 0
-            partition_data['capacity_mib'] = str(capacity_mb // (1024 * 1024)) if capacity_mb else ""
-            
-            free_space_mb = getattr(disk_info, 'freeSpace', 0) or 0
-            partition_data['consumed_mib'] = str((capacity_mb - free_space_mb) // (1024 * 1024)) if capacity_mb else ""
-            partition_data['free_mib'] = str(free_space_mb // (1024 * 1024)) if free_space_mb else ""
-            
+            partition_data["vm"] = vm.name or ""
+            partition_data["powerstate"] = (
+                str(vm.runtime.powerState) if vm.runtime.powerState else ""
+            )
+            partition_data["disk_key"] = getattr(disk_info, "key", "") or ""
+            partition_data["disk"] = disk_info.diskPath or ""
+
+            capacity_mb = getattr(disk_info, "capacity", 0) or 0
+            partition_data["capacity_mib"] = (
+                str(capacity_mb // (1024 * 1024)) if capacity_mb else ""
+            )
+
+            free_space_mb = getattr(disk_info, "freeSpace", 0) or 0
+            partition_data["consumed_mib"] = (
+                str((capacity_mb - free_space_mb) // (1024 * 1024))
+                if capacity_mb
+                else ""
+            )
+            partition_data["free_mib"] = (
+                str(free_space_mb // (1024 * 1024)) if free_space_mb else ""
+            )
+
             if capacity_mb > 0:
                 free_percent = (free_space_mb / capacity_mb) * 100
-                partition_data['free_percent'] = f"{free_percent:.2f}"
+                partition_data["free_percent"] = f"{free_percent:.2f}"
             else:
-                partition_data['free_percent'] = ""
+                partition_data["free_percent"] = ""
 
-            partition_data['annotation'] = vm.config.annotation or ""
-            partition_data['datacenter'] = self._get_datacenter(vm)
-            partition_data['cluster'] = self._get_cluster(vm)
-            partition_data['host'] = self._get_host(vm)
-            partition_data['folder'] = self._get_folder(vm)
-            partition_data['os_according_to_config'] = ""
-            partition_data['os_according_to_vmware_tools'] = vm.config.guestFullName or ""
-            partition_data['vm_id'] = vm._moId or ""
-            partition_data['vm_uuid'] = vm.config.uuid or ""
-            partition_data['vi_sdk_server'] = self.content.about.apiVersion or ""
-            partition_data['vi_sdk_uuid'] = self.content.about.instanceUuid or ""
+            partition_data["annotation"] = vm.config.annotation or ""
+            partition_data["datacenter"] = self._get_datacenter(vm)
+            partition_data["cluster"] = self._get_cluster(vm)
+            partition_data["host"] = self._get_host(vm)
+            partition_data["folder"] = self._get_folder(vm)
+            partition_data["os_according_to_config"] = ""
+            partition_data["os_according_to_vmware_tools"] = (
+                vm.config.guestFullName or ""
+            )
+            partition_data["vm_id"] = vm._moId or ""
+            partition_data["vm_uuid"] = vm.config.uuid or ""
+            partition_data["vi_sdk_server"] = self.content.about.apiVersion or ""
+            partition_data["vi_sdk_uuid"] = self.content.about.instanceUuid or ""
 
             partitions.append(partition_data)
 

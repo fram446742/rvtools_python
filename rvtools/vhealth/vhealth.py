@@ -1,4 +1,5 @@
 """VHealth collector - vCenter health and alarms"""
+
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -30,24 +31,24 @@ class VHealthCollector(BaseCollector):
         """Collect information for a single alarm"""
         health_data = {}
 
-        health_data['name'] = alarm.info.name or ""
-        health_data['message'] = alarm.info.description or ""
-        
+        health_data["name"] = alarm.info.name or ""
+        health_data["message"] = alarm.info.description or ""
+
         alarm_type = "Unknown"
-        if hasattr(alarm.info, 'alarm'):
+        if hasattr(alarm.info, "alarm"):
             alarm_type = type(alarm.info.alarm).__name__
-        
-        health_data['message_type'] = alarm_type
+
+        health_data["message_type"] = alarm_type
 
         vi_sdk_info = self._get_vi_sdk_info()
-        health_data['vi_sdk_server'] = vi_sdk_info['server']
-        health_data['vi_sdk_uuid'] = vi_sdk_info['uuid']
+        health_data["vi_sdk_server"] = vi_sdk_info["server"]
+        health_data["vi_sdk_uuid"] = vi_sdk_info["uuid"]
 
         return health_data
 
     def _get_vi_sdk_info(self):
         """Extract VI SDK information"""
         return {
-            'server': self.content.about.apiVersion or "",
-            'uuid': self.content.about.instanceUuid or "",
+            "server": self.content.about.apiVersion or "",
+            "uuid": self.content.about.instanceUuid or "",
         }

@@ -1,4 +1,5 @@
 """VCD collector - VM CD/DVD drive information"""
+
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -19,7 +20,7 @@ class VCDCollector(BaseCollector):
         )
 
         cd_list = []
-        
+
         for vm in container_view.view:
             vm_cds = self._collect_vm_cds(vm)
             cd_list.extend(vm_cds)
@@ -44,28 +45,34 @@ class VCDCollector(BaseCollector):
         """Collect information for a single CD/DVD drive"""
         cd_data = {}
 
-        cd_data['vm'] = vm.name or ""
-        cd_data['powerstate'] = str(vm.runtime.powerState) if vm.runtime.powerState else ""
-        cd_data['template'] = str(vm.config.template) if vm.config.template else ""
-        cd_data['srm_placeholder'] = ""
-        
-        cd_data['device_node'] = cd_device.deviceInfo.label or ""
-        cd_data['connected'] = str(cd_device.connectable.connected) if cd_device.connectable else ""
-        cd_data['starts_connected'] = str(cd_device.connectable.startConnected) if cd_device.connectable else ""
-        cd_data['device_type'] = type(cd_device).__name__
-        
-        cd_data['annotation'] = vm.config.annotation or ""
-        cd_data['datacenter'] = self._get_datacenter(vm)
-        cd_data['cluster'] = self._get_cluster(vm)
-        cd_data['host'] = self._get_host(vm)
-        cd_data['folder'] = self._get_folder(vm)
-        cd_data['os_according_to_config'] = ""
-        cd_data['os_according_to_vmware_tools'] = vm.config.guestFullName or ""
-        cd_data['vmref'] = ""
-        cd_data['vm_id'] = vm._moId or ""
-        cd_data['vm_uuid'] = vm.config.uuid or ""
-        cd_data['vi_sdk_server'] = self.content.about.apiVersion or ""
-        cd_data['vi_sdk_uuid'] = self.content.about.instanceUuid or ""
+        cd_data["vm"] = vm.name or ""
+        cd_data["powerstate"] = (
+            str(vm.runtime.powerState) if vm.runtime.powerState else ""
+        )
+        cd_data["template"] = str(vm.config.template) if vm.config.template else ""
+        cd_data["srm_placeholder"] = ""
+
+        cd_data["device_node"] = cd_device.deviceInfo.label or ""
+        cd_data["connected"] = (
+            str(cd_device.connectable.connected) if cd_device.connectable else ""
+        )
+        cd_data["starts_connected"] = (
+            str(cd_device.connectable.startConnected) if cd_device.connectable else ""
+        )
+        cd_data["device_type"] = type(cd_device).__name__
+
+        cd_data["annotation"] = vm.config.annotation or ""
+        cd_data["datacenter"] = self._get_datacenter(vm)
+        cd_data["cluster"] = self._get_cluster(vm)
+        cd_data["host"] = self._get_host(vm)
+        cd_data["folder"] = self._get_folder(vm)
+        cd_data["os_according_to_config"] = ""
+        cd_data["os_according_to_vmware_tools"] = vm.config.guestFullName or ""
+        cd_data["vmref"] = ""
+        cd_data["vm_id"] = vm._moId or ""
+        cd_data["vm_uuid"] = vm.config.uuid or ""
+        cd_data["vi_sdk_server"] = self.content.about.apiVersion or ""
+        cd_data["vi_sdk_uuid"] = self.content.about.instanceUuid or ""
 
         return cd_data
 

@@ -1,4 +1,5 @@
 """VUSB collector - VM USB device information"""
+
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -19,7 +20,7 @@ class VUSBCollector(BaseCollector):
         )
 
         usb_list = []
-        
+
         for vm in container_view.view:
             vm_usbs = self._collect_vm_usbs(vm)
             usb_list.extend(vm_usbs)
@@ -34,7 +35,10 @@ class VUSBCollector(BaseCollector):
             return usbs
 
         for device in vm.config.hardware.device:
-            if isinstance(device, (vim.vm.device.VirtualUSBController, vim.vm.device.VirtualUSBDevice)):
+            if isinstance(
+                device,
+                (vim.vm.device.VirtualUSBController, vim.vm.device.VirtualUSBDevice),
+            ):
                 usb_data = self._collect_usb(vm, device)
                 usbs.append(usb_data)
 
@@ -44,33 +48,39 @@ class VUSBCollector(BaseCollector):
         """Collect information for a single USB device"""
         usb_data = {}
 
-        usb_data['vm'] = vm.name or ""
-        usb_data['powerstate'] = str(vm.runtime.powerState) if vm.runtime.powerState else ""
-        usb_data['template'] = str(vm.config.template) if vm.config.template else ""
-        usb_data['srm_placeholder'] = ""
-        
-        usb_data['device_node'] = usb_device.deviceInfo.label or ""
-        usb_data['device_type'] = type(usb_device).__name__
-        usb_data['connected'] = str(usb_device.connectable.connected) if hasattr(usb_device, 'connectable') and usb_device.connectable else ""
-        usb_data['family'] = ""
-        usb_data['speed'] = ""
-        usb_data['ehci_enabled'] = ""
-        usb_data['auto_connect'] = ""
-        usb_data['bus_number'] = ""
-        usb_data['unit_number'] = ""
-        
-        usb_data['annotation'] = vm.config.annotation or ""
-        usb_data['datacenter'] = self._get_datacenter(vm)
-        usb_data['cluster'] = self._get_cluster(vm)
-        usb_data['host'] = self._get_host(vm)
-        usb_data['folder'] = self._get_folder(vm)
-        usb_data['os_according_to_config'] = ""
-        usb_data['os_according_to_vmware_tools'] = vm.config.guestFullName or ""
-        usb_data['vmref'] = ""
-        usb_data['vm_id'] = vm._moId or ""
-        usb_data['vm_uuid'] = vm.config.uuid or ""
-        usb_data['vi_sdk_server'] = self.content.about.apiVersion or ""
-        usb_data['vi_sdk_uuid'] = self.content.about.instanceUuid or ""
+        usb_data["vm"] = vm.name or ""
+        usb_data["powerstate"] = (
+            str(vm.runtime.powerState) if vm.runtime.powerState else ""
+        )
+        usb_data["template"] = str(vm.config.template) if vm.config.template else ""
+        usb_data["srm_placeholder"] = ""
+
+        usb_data["device_node"] = usb_device.deviceInfo.label or ""
+        usb_data["device_type"] = type(usb_device).__name__
+        usb_data["connected"] = (
+            str(usb_device.connectable.connected)
+            if hasattr(usb_device, "connectable") and usb_device.connectable
+            else ""
+        )
+        usb_data["family"] = ""
+        usb_data["speed"] = ""
+        usb_data["ehci_enabled"] = ""
+        usb_data["auto_connect"] = ""
+        usb_data["bus_number"] = ""
+        usb_data["unit_number"] = ""
+
+        usb_data["annotation"] = vm.config.annotation or ""
+        usb_data["datacenter"] = self._get_datacenter(vm)
+        usb_data["cluster"] = self._get_cluster(vm)
+        usb_data["host"] = self._get_host(vm)
+        usb_data["folder"] = self._get_folder(vm)
+        usb_data["os_according_to_config"] = ""
+        usb_data["os_according_to_vmware_tools"] = vm.config.guestFullName or ""
+        usb_data["vmref"] = ""
+        usb_data["vm_id"] = vm._moId or ""
+        usb_data["vm_uuid"] = vm.config.uuid or ""
+        usb_data["vi_sdk_server"] = self.content.about.apiVersion or ""
+        usb_data["vi_sdk_uuid"] = self.content.about.instanceUuid or ""
 
         return usb_data
 

@@ -1,4 +1,5 @@
 """VHBA collector - Host HBA information"""
+
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -15,7 +16,9 @@ class VHBACollector(BaseCollector):
         hba_list = []
         container = self.content.rootFolder
         view_type = [vim.HostSystem]
-        container_view = self.content.viewManager.CreateContainerView(container, view_type, True)
+        container_view = self.content.viewManager.CreateContainerView(
+            container, view_type, True
+        )
 
         for host in container_view.view:
             host_hbas = self._collect_host_hbas(host)
@@ -27,22 +30,26 @@ class VHBACollector(BaseCollector):
         """Collect HBAs for a single host"""
         hbas = []
         try:
-            if host.config and host.config.storageDevice and host.config.storageDevice.hostBusAdapter:
+            if (
+                host.config
+                and host.config.storageDevice
+                and host.config.storageDevice.hostBusAdapter
+            ):
                 for hba in host.config.storageDevice.hostBusAdapter:
                     hba_data = {
-                        'host': host.name or "",
-                        'datacenter': self._get_datacenter(host),
-                        'cluster': self._get_cluster(host),
-                        'device': hba.device or "",
-                        'type': hba.deviceType or "",
-                        'status': "",
-                        'bus': str(hba.bus) if hasattr(hba, 'bus') else "",
-                        'pci': hba.pciId or "",
-                        'driver': hba.driver or "",
-                        'model': hba.model or "",
-                        'wwn': getattr(hba, 'portWorldWideName', '') or "",
-                        'vi_sdk_server': self.content.about.apiVersion or "",
-                        'vi_sdk_uuid': self.content.about.instanceUuid or "",
+                        "host": host.name or "",
+                        "datacenter": self._get_datacenter(host),
+                        "cluster": self._get_cluster(host),
+                        "device": hba.device or "",
+                        "type": hba.deviceType or "",
+                        "status": "",
+                        "bus": str(hba.bus) if hasattr(hba, "bus") else "",
+                        "pci": hba.pciId or "",
+                        "driver": hba.driver or "",
+                        "model": hba.model or "",
+                        "wwn": getattr(hba, "portWorldWideName", "") or "",
+                        "vi_sdk_server": self.content.about.apiVersion or "",
+                        "vi_sdk_uuid": self.content.about.instanceUuid or "",
                     }
                     hbas.append(hba_data)
         except Exception:
@@ -51,13 +58,15 @@ class VHBACollector(BaseCollector):
 
     def _get_datacenter(self, host):
         try:
-            container = self.content.viewManager.CreateContainerView(self.content.rootFolder, [vim.Datacenter], True)
+            container = self.content.viewManager.CreateContainerView(
+                self.content.rootFolder, [vim.Datacenter], True
+            )
             return container.view[0].name if container.view else ""
         except Exception:
             return ""
 
     def _get_cluster(self, host):
         try:
-            return host.parent.name if hasattr(host, 'parent') and host.parent else ""
+            return host.parent.name if hasattr(host, "parent") and host.parent else ""
         except Exception:
             return ""

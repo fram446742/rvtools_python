@@ -1,8 +1,9 @@
 """Base class for all data collectors"""
+
 from abc import ABC, abstractmethod
 import logging
 
-logger = logging.getLogger('rvtools')
+logger = logging.getLogger("rvtools")
 
 
 class BaseCollector(ABC):
@@ -40,7 +41,7 @@ class BaseCollector(ABC):
         """
         pass
 
-    def run(self, format_type='xlsx'):
+    def run(self, format_type="xlsx"):
         """
         Run collector and return data
 

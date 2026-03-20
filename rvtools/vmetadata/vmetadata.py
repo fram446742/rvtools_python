@@ -1,4 +1,5 @@
 """VMetaData collector - Metadata information"""
+
 from datetime import datetime
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -15,12 +16,12 @@ class VMetaDataCollector(BaseCollector):
         metadata_list = []
 
         now = datetime.now()
-        
+
         metadata_data = {
-            'rvtools_major_version': "1",
-            'rvtools_version': "1.0.0",
-            'xlsx_creation_datetime': now.isoformat(),
-            'server': self.content.about.name if self.content.about else "",
+            "rvtools_major_version": "1",
+            "rvtools_version": "1.0.0",
+            "xlsx_creation_datetime": now.isoformat(),
+            "server": self.content.about.name if self.content.about else "",
         }
         metadata_list.append(metadata_data)
 

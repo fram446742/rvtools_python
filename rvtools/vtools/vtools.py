@@ -1,4 +1,5 @@
 """VTools collector - VMware Tools information"""
+
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 
@@ -19,7 +20,7 @@ class VToolsCollector(BaseCollector):
         )
 
         tools_list = []
-        
+
         for vm in container_view.view:
             tools_data = self._collect_vm_tools(vm)
             tools_list.append(tools_data)
@@ -30,37 +31,41 @@ class VToolsCollector(BaseCollector):
         """Collect VMware Tools information for a single VM"""
         tools_data = {}
 
-        tools_data['vm'] = vm.name or ""
-        tools_data['powerstate'] = str(vm.runtime.powerState) if vm.runtime.powerState else ""
-        tools_data['template'] = str(vm.config.template) if vm.config.template else ""
-        tools_data['srm_placeholder'] = ""
-        
-        tools_data['vm_version'] = vm.config.version or ""
-        tools_data['tools'] = str(vm.guest.toolsStatus) if vm.guest.toolsStatus else ""
-        tools_data['tools_version'] = vm.guest.toolsVersion or ""
-        tools_data['required_version'] = vm.guest.toolsVersionStatus or ""
-        tools_data['upgradeable'] = ""
-        tools_data['upgrade_policy'] = ""
-        tools_data['sync_time'] = ""
-        tools_data['app_status'] = ""
-        tools_data['heartbeat_status'] = str(vm.guestHeartbeatStatus) if vm.guestHeartbeatStatus else ""
-        tools_data['kernel_crash_state'] = ""
-        tools_data['operation_ready'] = ""
-        tools_data['state_change_support'] = ""
-        tools_data['interactive_guest'] = ""
-        
-        tools_data['annotation'] = vm.config.annotation or ""
-        tools_data['datacenter'] = self._get_datacenter(vm)
-        tools_data['cluster'] = self._get_cluster(vm)
-        tools_data['host'] = self._get_host(vm)
-        tools_data['folder'] = self._get_folder(vm)
-        tools_data['os_according_to_config'] = ""
-        tools_data['os_according_to_vmware_tools'] = vm.config.guestFullName or ""
-        tools_data['vmref'] = ""
-        tools_data['vm_id'] = vm._moId or ""
-        tools_data['vm_uuid'] = vm.config.uuid or ""
-        tools_data['vi_sdk_server'] = self.content.about.apiVersion or ""
-        tools_data['vi_sdk_uuid'] = self.content.about.instanceUuid or ""
+        tools_data["vm"] = vm.name or ""
+        tools_data["powerstate"] = (
+            str(vm.runtime.powerState) if vm.runtime.powerState else ""
+        )
+        tools_data["template"] = str(vm.config.template) if vm.config.template else ""
+        tools_data["srm_placeholder"] = ""
+
+        tools_data["vm_version"] = vm.config.version or ""
+        tools_data["tools"] = str(vm.guest.toolsStatus) if vm.guest.toolsStatus else ""
+        tools_data["tools_version"] = vm.guest.toolsVersion or ""
+        tools_data["required_version"] = vm.guest.toolsVersionStatus or ""
+        tools_data["upgradeable"] = ""
+        tools_data["upgrade_policy"] = ""
+        tools_data["sync_time"] = ""
+        tools_data["app_status"] = ""
+        tools_data["heartbeat_status"] = (
+            str(vm.guestHeartbeatStatus) if vm.guestHeartbeatStatus else ""
+        )
+        tools_data["kernel_crash_state"] = ""
+        tools_data["operation_ready"] = ""
+        tools_data["state_change_support"] = ""
+        tools_data["interactive_guest"] = ""
+
+        tools_data["annotation"] = vm.config.annotation or ""
+        tools_data["datacenter"] = self._get_datacenter(vm)
+        tools_data["cluster"] = self._get_cluster(vm)
+        tools_data["host"] = self._get_host(vm)
+        tools_data["folder"] = self._get_folder(vm)
+        tools_data["os_according_to_config"] = ""
+        tools_data["os_according_to_vmware_tools"] = vm.config.guestFullName or ""
+        tools_data["vmref"] = ""
+        tools_data["vm_id"] = vm._moId or ""
+        tools_data["vm_uuid"] = vm.config.uuid or ""
+        tools_data["vi_sdk_server"] = self.content.about.apiVersion or ""
+        tools_data["vi_sdk_uuid"] = self.content.about.instanceUuid or ""
 
         return tools_data
 
