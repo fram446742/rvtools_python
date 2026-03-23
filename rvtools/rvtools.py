@@ -127,6 +127,14 @@ def get_args():
         help="Include extra custom field columns (e.g., backup protection metadata). Default: hidden to match original RVTools format",
     )
 
+    parser.add_argument(
+        "--override",
+        required=False,
+        action="store_true",
+        default=False,
+        help="Allow terminal parameters to override config file values",
+    )
+
     return parser.parse_args()
 
 
@@ -315,11 +323,29 @@ def process_single_vcenter(
             handler.flush() if hasattr(handler, "flush") else None
 
 
-def _resolve_setting(cli_value, config_value, default=None):
-    if cli_value is not None:
-        return cli_value
+def _resolve_setting(cli_value, config_value, default=None, override=False):
+    """
+    Resolve a setting based on CLI and config values.
+    
+    Args:
+        cli_value: Value from CLI arguments
+        config_value: Value from config file
+        default: Default value if both are None
+        override: If True, CLI values override config values
+                 If False, config values take precedence, CLI only used if required
+    
+    Returns:
+        Resolved setting value
+    """
+    if override:
+        # Override mode: CLI values take precedence
+        if cli_value is not None:
+            return cli_value
+    # Normal mode: config takes precedence
     if config_value is not None:
         return config_value
+    if cli_value is not None:
+        return cli_value
     return default
 
 
@@ -327,7 +353,8 @@ def main():
     """Main entry point"""
     args = get_args()
 
-    # CLI-level options take precedence, config values are fallback
+    # CLI-level options take precedence only if --override is set, otherwise config takes precedence
+    override = args.override
     cli_format = args.format
     cli_threads = args.threads
     cli_sheets = args.sheets
@@ -409,19 +436,26 @@ def main():
         logger.error(f"Directory does not exist: {directory}")
         sys.exit(1)
 
+    # Log override mode status
+    if override:
+        logger.info("Override mode enabled: terminal parameters will override config values")
+    else:
+        logger.info("Override mode disabled: config values will take precedence over optional terminal parameters")
+
     # Process each vCenter configuration
     success_count = 0
     for config in configs_to_process:
         try:
-            # Per-vCenter effective settings
-            export_format = _resolve_setting(cli_format, config.get("format"), "xlsx")
-            threads = _resolve_setting(cli_threads, config.get("threads"), "auto")
-            sheets_filter = _resolve_setting(cli_sheets, config.get("sheets"), None)
-            verbose = _resolve_setting(cli_verbose, config.get("verbose"), False)
+            # Per-vCenter effective settings - apply override logic
+            export_format = _resolve_setting(cli_format, config.get("format"), "xlsx", override=override)
+            threads = _resolve_setting(cli_threads, config.get("threads"), "auto", override=override)
+            sheets_filter = _resolve_setting(cli_sheets, config.get("sheets"), None, override=override)
+            verbose = _resolve_setting(cli_verbose, config.get("verbose"), False, override=override)
             include_custom_fields = _resolve_setting(
                 cli_include_custom_fields,
                 config.get("include_custom_fields"),
                 False,
+                override=override,
             )
 
             # Evolve threads setting to max_workers
