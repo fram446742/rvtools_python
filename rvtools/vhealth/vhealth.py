@@ -516,8 +516,17 @@ class VHealthCollector(BaseCollector):
                     
                     file_path = file_entry.path.lower()
                     
-                    # Extract base name (before first dot or full name if no dot)
-                    path_parts = file_path.rsplit(".", 1)
+                    # Extract base name, removing companion suffixes like -flat, -ctk, -vswp
+                    # Example: disk-flat.vmdk → disk, disk-ctk.vmdk → disk, disk.vmdk → disk
+                    filename = file_path.split("/")[-1]  # Get just the filename, not full path
+                    
+                    # Remove companion suffixes
+                    for suffix in ["-flat", "-ctk", "-vswp", "-delta", "-aux"]:
+                        if suffix in filename:
+                            filename = filename.replace(suffix, "")
+                    
+                    # Now extract basename and extension
+                    path_parts = filename.rsplit(".", 1)
                     basename = path_parts[0]
                     ext = path_parts[1] if len(path_parts) > 1 else ""
                     
@@ -527,35 +536,24 @@ class VHealthCollector(BaseCollector):
                 except Exception:
                     continue
             
-            # Second pass: deduplicate - keep primary files and skip companions
-            # For VMDK files specifically: skip -flat.vmdk, -ctk.vmdk if main .vmdk exists
-            # For VMX and VMTX: report each separately
+            # Second pass: deduplicate - report only one file per group
+            # Files are already grouped by base name with suffixes removed
+            # So disk.vmdk, disk-flat.vmdk, disk-ctk.vmdk are all in the same group
+            # We pick the primary file type and skip companions
             processed = set()
             
             for basename, files in file_groups.items():
-                # Separate primary and companion files
-                primary_files = []
-                companion_files = []
+                # Sort by file type: vmx and vmtx reported separately
+                # For vmdk: only report if no primary exists, else skip companions
+                vmx_files = [f for f in files if f[0] == "vmx"]
+                vmtx_files = [f for f in files if f[0] == "vmtx"]
+                vmdk_files = [f for f in files if f[0] == "vmdk"]
                 
-                for ext, file_path, file_entry in files:
-                    # Check if this is a companion file (only for .vmdk)
-                    if ext == "vmdk":
-                        # Check if this is a companion like -flat.vmdk or -ctk.vmdk
-                        filename = file_path.split("/")[-1]
-                        if "-flat.vmdk" in file_path or "-ctk.vmdk" in file_path or "-vswp.vmdk" in file_path:
-                            companion_files.append((ext, file_path, file_entry))
-                        else:
-                            primary_files.append((ext, file_path, file_entry))
-                    else:
-                        # For .vmx and .vmtx, all are primary
-                        primary_files.append((ext, file_path, file_entry))
-                
-                # Report primary files
-                files_to_report = primary_files
-                
-                # If no primary VMDK files, report companions as edge cases
-                if not primary_files:
-                    files_to_report = companion_files
+                # Report in order: vmx, vmtx, then only first vmdk (skip companions)
+                files_to_report = vmx_files + vmtx_files
+                if vmdk_files:
+                    # Keep only the first vmdk (others are companions like -flat, -ctk)
+                    files_to_report.append(vmdk_files[0])
                 
                 # Check each file for orphaned status
                 for ext, file_path, file_entry in files_to_report:
