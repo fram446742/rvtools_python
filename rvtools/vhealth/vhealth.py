@@ -443,25 +443,34 @@ class VHealthCollector(BaseCollector):
                 logger.debug(f"Found {len(result_warnings)} orphaned files at {datastore_path}")
                 warnings.extend(result_warnings)
                 
-                # Extract subdirectories and search them recursively
+                # Extract unique directory names from the search results' file paths
+                # This helps us identify subdirectories to search recursively
                 subdirs = set()
                 if hasattr(task.info.result, "file") and task.info.result.file:
                     for file_entry in task.info.result.file:
-                        if hasattr(file_entry, "fileType") and str(file_entry.fileType) == "directory":
-                            if hasattr(file_entry, "path"):
-                                subdir_name = file_entry.path
-                                # Build full path for subdirectory search
-                                if datastore_path.endswith("]"):
-                                    # First level: [datastore]
-                                    subdir_path = f"{datastore_path} {subdir_name}"
-                                else:
-                                    # Nested level: [datastore] path/to/dir
-                                    subdir_path = f"{datastore_path}/{subdir_name}"
-                                subdirs.add(subdir_path)
+                        if hasattr(file_entry, "path"):
+                            path = file_entry.path
+                            # Check if path contains directory separators
+                            if "/" in path:
+                                # Extract directory part
+                                dir_part = path.split("/")[0]
+                                subdirs.add(dir_part)
+                            elif "\\" in path:
+                                dir_part = path.split("\\")[0]
+                                subdirs.add(dir_part)
                 
-                # Recursively search subdirectories
-                for subdir_path in subdirs:
-                    logger.debug(f"Recursively searching: {subdir_path}")
+                logger.debug(f"Identified {len(subdirs)} subdirectories from file paths at {datastore_path}: {subdirs}")
+                
+                # Recursively search each subdirectory
+                for subdir_name in sorted(subdirs):
+                    if datastore_path.endswith("]"):
+                        # First level: [datastore]
+                        subdir_path = f"{datastore_path} {subdir_name}"
+                    else:
+                        # Nested level: [datastore] path/to/dir
+                        subdir_path = f"{datastore_path}/{subdir_name}"
+                    
+                    logger.debug(f"Recursively searching identified subdirectory: {subdir_path}")
                     warnings.extend(
                         self._search_datastore_path(datastore, subdir_path, registered_files)
                     )
