@@ -382,7 +382,15 @@ class VHealthCollector(BaseCollector):
             logger.debug(f"Searching datastore {datastore.name} for orphaned files...")
             # SearchDatastore_Task requires: datastore path (formatted as [name]) and spec
             datastore_path = f"[{datastore.name}]"
-            task = datastore.browser.SearchDatastore_Task(datastore_path, spec)
+            
+            try:
+                task = datastore.browser.SearchDatastore_Task(datastore_path, spec)
+            except vim.fault.NoPermission as e:
+                logger.debug(f"Permission denied searching datastore {datastore.name}: {e}")
+                return warnings
+            except Exception as e:
+                logger.debug(f"Error initiating search on datastore {datastore.name}: {e}")
+                return warnings
 
             # Wait for task with timeout
             start_time = time.time()
@@ -430,8 +438,19 @@ class VHealthCollector(BaseCollector):
                     if not hasattr(file_entry, "path"):
                         continue
 
+                    # Normalize path for comparison (handle different separators)
                     file_path = file_entry.path.lower()
-                    if file_path not in registered_files:
+                    file_path_normalized = file_path.replace("\\", "/")
+                    
+                    # Check if file is in registered files
+                    is_registered = (file_path_normalized in registered_files)
+                    
+                    # Also check with different path separators in case registered files use backslashes
+                    if not is_registered:
+                        file_path_backslash = file_path.replace("/", "\\")
+                        is_registered = (file_path_backslash in registered_files)
+                    
+                    if not is_registered:
                         full_path = f"[{datastore_name}] {file_entry.path}"
                         
                         # Determine message type based on file extension
