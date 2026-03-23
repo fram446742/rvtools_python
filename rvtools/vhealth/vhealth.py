@@ -117,8 +117,14 @@ class VHealthCollector(BaseCollector):
                                       device.connectable and 
                                       device.connectable.connected)
                         if is_connected:
-                            device_name = getattr(device, 'deviceInfo', None)
-                            device_label = device_name.label if device_name else "CD/DVD drive"
+                            # Try to get device label safely
+                            device_label = "CD/DVD drive"
+                            try:
+                                if hasattr(device, 'deviceInfo') and device.deviceInfo:
+                                    device_label = device.deviceInfo.label or device_label
+                            except:
+                                pass
+                            
                             warning = {
                                 "name": vm.name,
                                 "message": f"VM has a CDROM device connected! {device_label}",
@@ -142,8 +148,14 @@ class VHealthCollector(BaseCollector):
                                       device.connectable and 
                                       device.connectable.connected)
                         if is_connected:
-                            device_name = getattr(device, 'deviceInfo', None)
-                            device_label = device_name.label if device_name else "USB device"
+                            # Try to get device label safely
+                            device_label = "USB device"
+                            try:
+                                if hasattr(device, 'deviceInfo') and device.deviceInfo:
+                                    device_label = device.deviceInfo.label or device_label
+                            except:
+                                pass
+                            
                             warning = {
                                 "name": vm.name,
                                 "message": f"VM has a USB device connected! {device_label}",
@@ -368,7 +380,8 @@ class VHealthCollector(BaseCollector):
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
 
             logger.debug(f"Searching datastore {datastore.name} for orphaned files...")
-            task = datastore.browser.SearchDatastore_Task(spec)
+            # SearchDatastore_Task requires TWO parameters: datastore path (str) and spec
+            task = datastore.browser.SearchDatastore_Task(datastore.name, spec)
 
             # Wait for task with timeout
             start_time = time.time()
