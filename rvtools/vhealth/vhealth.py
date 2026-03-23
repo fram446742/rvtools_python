@@ -361,11 +361,6 @@ class VHealthCollector(BaseCollector):
                                     hasattr(device.backing, "fileName")):
                                     path = self._extract_datastore_path(device.backing.fileName).lower()
                                     registered_files.add(path)
-                                    
-                                    # Also add the -flat.vmdk variant if this is a vmdk
-                                    if path.endswith(".vmdk"):
-                                        flat_path = path.replace(".vmdk", "-flat.vmdk")
-                                        registered_files.add(flat_path)
                                     logger.debug(f"VM {vm.name}: registered disk {path}")
 
                 except Exception as e:
@@ -458,6 +453,14 @@ class VHealthCollector(BaseCollector):
                     
                     # Check if file is in registered files
                     is_registered = (file_path_normalized in registered_files)
+                    
+                    # For -flat.vmdk files, check if the main .vmdk is registered
+                    # (flat files are automatic components of VMDK files)
+                    if not is_registered and file_path_normalized.endswith("-flat.vmdk"):
+                        main_vmdk = file_path_normalized.replace("-flat.vmdk", ".vmdk")
+                        is_registered = (main_vmdk in registered_files)
+                        if is_registered:
+                            logger.debug(f"File {file_path_normalized} is component of registered {main_vmdk}")
                     
                     # Also check with different path separators in case registered files use backslashes
                     if not is_registered:
