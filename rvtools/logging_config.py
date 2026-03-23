@@ -7,12 +7,13 @@ from datetime import datetime
 
 
 class DualStreamHandler(logging.Handler):
-    """Handler that logs to both stdout and file with proper buffering"""
+    """Handler that logs to both stdout and file with different levels per stream"""
 
-    def __init__(self, file_path):
+    def __init__(self, file_path, console_level=logging.INFO):
         super().__init__()
         self.file_path = file_path
         self.file_handle = None
+        self.console_level = console_level
         self._open_file()
 
     def _open_file(self):
@@ -23,14 +24,15 @@ class DualStreamHandler(logging.Handler):
             print(f"Error opening log file: {e}", file=sys.stderr)
 
     def emit(self, record):
-        """Emit a record to both stdout and file"""
+        """Emit a record to stdout (if level >= console_level) and to file (always)"""
         try:
             msg = self.format(record)
 
-            # Print to stdout with flush
-            print(msg, flush=True)
+            # Print to stdout only if record level >= console_level (DEBUG messages hidden unless verbose)
+            if record.levelno >= self.console_level:
+                print(msg, flush=True)
 
-            # Write to file with flush
+            # Write to file with flush (always, including DEBUG)
             if self.file_handle and not self.file_handle.closed:
                 self.file_handle.write(msg + "\n")
                 self.file_handle.flush()
@@ -46,8 +48,14 @@ class DualStreamHandler(logging.Handler):
         super().close()
 
 
-def setup_logging(directory):
-    """Setup logging to both stdout and file with proper buffering"""
+def setup_logging(directory, verbose=False):
+    """Setup logging to both stdout and file with proper buffering
+    
+    Args:
+        directory: Directory to store log file
+        verbose: If True, show INFO level in console. If False, show WARNING level.
+                 File always contains DEBUG level.
+    """
     log_file = f"{directory}/rvtools_{datetime.now().strftime('%Y-%m-%d_%H.%M')}.log"
 
     # Initialize file with header
@@ -67,9 +75,14 @@ def setup_logging(directory):
         handler.close()
         logger.removeHandler(handler)
 
+    # Set console level based on verbose flag
+    # If verbose: show INFO and above
+    # If not verbose: show WARNING and above (hide INFO and DEBUG)
+    console_level = logging.INFO if verbose else logging.WARNING
+
     # Add dual handler with proper formatting
-    handler = DualStreamHandler(log_file)
-    handler.setLevel(logging.DEBUG)
+    handler = DualStreamHandler(log_file, console_level=console_level)
+    handler.setLevel(logging.DEBUG)  # Handler accepts all, filter happens in emit()
 
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",

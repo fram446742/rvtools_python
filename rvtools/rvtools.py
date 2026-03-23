@@ -376,7 +376,7 @@ def main():
 
     # Setup logging (use directory from first config)
     directory = configs_to_process[0].get("directory")
-    logger_instance, log_file = setup_logging(directory)
+    logger_instance, log_file = setup_logging(directory, verbose=args.verbose)
 
     if not os.path.isdir(directory):
         logger.error(f"Directory does not exist: {directory}")
