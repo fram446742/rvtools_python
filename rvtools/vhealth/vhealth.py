@@ -417,13 +417,19 @@ class VHealthCollector(BaseCollector):
                     break
 
             if str(task.info.state) == "success" and task.info.result:
+                # Log all files found
+                file_count = 0
+                if hasattr(task.info.result, "file") and task.info.result.file:
+                    file_count = len(task.info.result.file)
+                logger.debug(f"Datastore {datastore.name} search found {file_count} matching files")
+                
                 result_warnings = self._process_datastore_search_results(
                     task.info.result, datastore.name, registered_files
                 )
                 logger.debug(f"Found {len(result_warnings)} orphaned files on {datastore.name}")
                 warnings.extend(result_warnings)
             else:
-                logger.debug(f"No results from datastore search on {datastore.name}")
+                logger.debug(f"No results from datastore search on {datastore.name} (state: {str(task.info.state)})")
 
         except Exception as e:
             logger.debug(f"Error scanning datastore {datastore.name}: {e}", exc_info=True)
@@ -451,6 +457,8 @@ class VHealthCollector(BaseCollector):
                     file_path = file_entry.path.lower()
                     file_path_normalized = file_path.replace("\\", "/")
                     
+                    logger.debug(f"Checking file: {file_entry.path}")
+                    
                     # Check if file is in registered files
                     is_registered = (file_path_normalized in registered_files)
                     
@@ -460,14 +468,21 @@ class VHealthCollector(BaseCollector):
                         main_vmdk = file_path_normalized.replace("-flat.vmdk", ".vmdk")
                         is_registered = (main_vmdk in registered_files)
                         if is_registered:
-                            logger.debug(f"File {file_path_normalized} is component of registered {main_vmdk}")
+                            logger.debug(f"  -> Registered as component of {main_vmdk}")
+                        else:
+                            logger.debug(f"  -> Orphaned (-flat.vmdk without main .vmdk)")
                     
                     # Also check with different path separators in case registered files use backslashes
                     if not is_registered:
                         file_path_backslash = file_path.replace("/", "\\")
                         is_registered = (file_path_backslash in registered_files)
+                        if is_registered:
+                            logger.debug(f"  -> Registered (backslash path format)")
                     
-                    logger.debug(f"File: {file_entry.path} - Registered: {is_registered}")
+                    if is_registered:
+                        logger.debug(f"  -> Registered")
+                    else:
+                        logger.debug(f"  -> ORPHANED")
                     
                     if not is_registered:
                         full_path = f"[{datastore_name}] {file_entry.path}"
