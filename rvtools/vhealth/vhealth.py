@@ -115,9 +115,17 @@ class VHealthCollector(BaseCollector):
             # Search for VM-related files
             spec = vim.host.DatastoreBrowser.SearchSpec()
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
+            datastore_path = f"[{datastore.name}]"
 
             logger.debug(f"Searching datastore {datastore.name} for orphaned files...")
-            task = datastore.browser.SearchDatastore(spec=spec)
+            task = self._start_datastore_search_task(
+                datastore.browser, datastore_path, spec
+            )
+            if task is None:
+                logger.debug(
+                    f"Datastore {datastore.name} browser does not support search APIs"
+                )
+                return warnings
 
             # Wait for task (with timeout)
             import time
@@ -147,7 +155,6 @@ class VHealthCollector(BaseCollector):
             if str(task.info.state) == "success":
                 result = task.info.result
                 if result:
-                    logger.debug(f"Found {len(result.file) if hasattr(result, 'file') and result.file else 0} files in {datastore.name}")
                     warnings.extend(
                         self._process_datastore_search_results(
                             result, datastore.name, registered_files
@@ -161,29 +168,67 @@ class VHealthCollector(BaseCollector):
 
         return warnings
 
+    def _start_datastore_search_task(self, browser, datastore_path, search_spec):
+        """Start datastore browser task using the best supported search API."""
+        search_methods = [
+            ("SearchDatastoreSubFolders", {"datastorePath": datastore_path, "searchSpec": search_spec}),
+            ("SearchDatastoreSubFolders_Task", {"datastorePath": datastore_path, "searchSpec": search_spec}),
+            ("SearchDatastore", {"datastorePath": datastore_path, "spec": search_spec}),
+            ("SearchDatastore_Task", {"datastorePath": datastore_path, "searchSpec": search_spec}),
+        ]
+
+        for method_name, kwargs in search_methods:
+            method = getattr(browser, method_name, None)
+            if method is None:
+                continue
+
+            try:
+                return method(**kwargs)
+            except TypeError:
+                # Different pyVmomi versions expose slightly different signatures.
+                continue
+            except Exception as exc:
+                logger.debug(f"Datastore search call failed using {method_name}: {exc}")
+                continue
+
+        return None
+
+    def _iter_search_result_entries(self, search_results):
+        """Yield (folder_path, file_path) from both single-folder and recursive search results."""
+        if isinstance(search_results, list):
+            for folder_result in search_results:
+                folder_path = getattr(folder_result, "folderPath", "")
+                for file_entry in getattr(folder_result, "file", []) or []:
+                    file_path = getattr(file_entry, "path", None)
+                    if file_path:
+                        yield folder_path, file_path
+            return
+
+        folder_path = getattr(search_results, "folderPath", "")
+        for file_entry in getattr(search_results, "file", []) or []:
+            file_path = getattr(file_entry, "path", None)
+            if file_path:
+                yield folder_path, file_path
+
     def _process_datastore_search_results(self, search_results, datastore_name, registered_files):
         """Process files found in datastore search for orphaned entries"""
         warnings = []
 
         try:
-            if not hasattr(search_results, "file") or not search_results.file:
-                return warnings
-
             vi_sdk_info = self._get_vi_sdk_info()
 
-            for file_entry in search_results.file:
+            for folder_path, file_path in self._iter_search_result_entries(search_results):
                 try:
-                    if not hasattr(file_entry, "path"):
-                        continue
-
-                    file_path = file_entry.path
-                    file_path_lower = file_path.lower()
+                    relative_path = self._search_result_to_relative_path(
+                        folder_path, file_path
+                    )
+                    file_path_lower = relative_path.lower()
 
                     # Check if this file is registered
                     if file_path_lower not in registered_files:
                         # This is an orphaned/zombie file
                         message = self._get_zombie_message(file_path)
-                        full_path = f"[{datastore_name}] {file_path}"
+                        full_path = f"[{datastore_name}] {relative_path}"
 
                         warning = {
                             "name": full_path,
@@ -202,6 +247,29 @@ class VHealthCollector(BaseCollector):
 
         return warnings
 
+    def _search_result_to_relative_path(self, folder_path, file_path):
+        """Build normalized datastore-relative path from folder and file values."""
+        file_part = self._normalize_relative_path(file_path)
+        folder_part = self._extract_datastore_path(folder_path)
+        folder_part = self._normalize_relative_path(folder_part)
+
+        if not folder_part:
+            return file_part
+        if not file_part:
+            return folder_part
+        if file_part.startswith(folder_part + "/"):
+            return file_part
+        return f"{folder_part}/{file_part}".strip("/")
+
+    def _normalize_relative_path(self, path):
+        """Normalize paths so datastore paths compare reliably."""
+        if not path:
+            return ""
+
+        normalized = str(path).strip()
+        normalized = normalized.replace("\\", "/")
+        return normalized.lstrip("/")
+
     def _extract_datastore_path(self, full_path):
         """Extract path relative to datastore from full path like [datastore] path"""
         if not full_path:
@@ -212,9 +280,9 @@ class VHealthCollector(BaseCollector):
             # Extract part after "]"
             parts = full_path.split("]", 1)
             if len(parts) > 1:
-                return parts[1].strip()
+                return self._normalize_relative_path(parts[1])
 
-        return full_path
+        return self._normalize_relative_path(full_path)
 
     def _get_zombie_message(self, file_path):
         """Get appropriate message based on file type"""

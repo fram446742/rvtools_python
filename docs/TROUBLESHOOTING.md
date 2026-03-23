@@ -240,6 +240,38 @@ rvtools --verbose | grep "vSphere version"
 # Reduce thread count if resource constrained
 ```
 
+#### Error: "No data collected for vHealth"
+
+**Symptoms**:
+```
+WARNING - No data collected for vHealth
+```
+
+**Most common causes**:
+1. Datastore browser search is limited to root folder only (no recursive traversal)
+2. Datastore browser permissions are missing
+3. Environment genuinely has no orphaned `.vmx`, `.vmtx`, or `.vmdk` files
+
+**What to verify**:
+
+```bash
+# 1. Run only vHealth with verbose logging
+rvtools --sheets vHealth --verbose --config ~/.rvtools.toml
+
+# 2. Look for datastore browser errors in log
+grep -E "vHealth|datastore|SearchDatastore|orphan" rvtools_*.log
+```
+
+**Expected healthy behavior**:
+- vHealth should use recursive datastore browsing for `*.vmx`, `*.vmtx`, and `*.vmdk`
+- Returned file paths should be compared against registered VM config/disk paths
+- Any unreferenced file should appear as a `Zombie` warning row
+
+**If still empty after fix**:
+- Confirm account can browse datastore contents in vSphere Client
+- Test against a datastore known to contain unregistered VM files
+- Verify the environment is not fully clean (no orphaned files)
+
 ### Export Format Errors
 
 #### Error: "XLSX file is corrupted"
