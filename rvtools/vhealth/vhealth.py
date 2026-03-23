@@ -484,18 +484,28 @@ class VHealthCollector(BaseCollector):
                 subdirs = []
                 if hasattr(dir_task.info.result, "file") and dir_task.info.result.file:
                     logger.debug(f"Directory enumeration at {datastore_path} returned {len(dir_task.info.result.file)} entries")
-                    for file_entry in dir_task.info.result.file:
+                    for i, file_entry in enumerate(dir_task.info.result.file):
                         # Check if this is a directory
                         try:
+                            # Log what we're checking
+                            file_type_str = "UNKNOWN"
+                            is_dir = False
+                            
                             if hasattr(file_entry, "fileType"):
                                 file_type_str = str(file_entry.fileType)
                                 if "directory" in file_type_str.lower():
-                                    if hasattr(file_entry, "path"):
-                                        subdir_name = file_entry.path
-                                        logger.debug(f"  Found directory: {subdir_name}")
-                                        subdirs.append(subdir_name)
+                                    is_dir = True
+                            
+                            # Log each entry (at least first 5)
+                            if i < 5:
+                                logger.debug(f"  Entry {i}: path={getattr(file_entry, 'path', 'NO_PATH')}, fileType={file_type_str}, isDir={is_dir}")
+                            
+                            if is_dir and hasattr(file_entry, "path"):
+                                subdir_name = file_entry.path
+                                logger.debug(f"  -> FOUND DIRECTORY: {subdir_name}")
+                                subdirs.append(subdir_name)
                         except Exception as e:
-                            logger.debug(f"Error checking fileType: {e}")
+                            logger.debug(f"Error checking fileType for entry {i}: {e}")
                             continue
                 
                 logger.debug(f"Found {len(subdirs)} subdirectories to recursively search at {datastore_path}")
