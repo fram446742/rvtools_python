@@ -168,33 +168,6 @@ RVTools supports vCenter APIs:
 - Certificate verification can be disabled if needed
 - Recommended: Use CA-signed certificates
 
-## Performance Characteristics
-
-### Small Environments (<100 VMs)
-- Typical runtime: < 1 minute
-- CPU: Low
-- Memory: < 500 MB
-- Network: < 100 MB transfer
-
-### Medium Environments (100-1000 VMs)
-- Typical runtime: 1-5 minutes
-- CPU: Medium (multi-threaded)
-- Memory: < 2 GB
-- Network: 100-500 MB transfer
-
-### Large Environments (1000-10000 VMs)
-- Typical runtime: 5-30 minutes
-- CPU: High (all threads)
-- Memory: 2-8 GB
-- Network: 500 MB - 2 GB transfer
-
-### Very Large Environments (10000+ VMs)
-- Typical runtime: 30-120 minutes
-- CPU: Very high (all threads)
-- Memory: 4-16 GB
-- Network: 2-10 GB transfer
-- Recommended: Increase threads and network bandwidth
-
 ## Tested Hardware Platforms
 
 ### ESXi Server Types
@@ -203,11 +176,6 @@ RVTools supports vCenter APIs:
 - Lenovo ThinkSystem
 - Supermicro
 - Custom built servers
-
-### vCenter Hardware
-- VM with 8-32 CPUs recommended
-- 16-64 GB RAM recommended
-- 500 GB+ storage recommended
 
 ## Python Compatibility
 
