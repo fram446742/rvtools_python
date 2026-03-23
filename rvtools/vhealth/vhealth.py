@@ -129,10 +129,16 @@ class VHealthCollector(BaseCollector):
                         if not is_connected:
                             continue
                             
-                        msg_type = "CDROM" if isinstance(device, vim.vm.device.VirtualCdrom) else "Floppy"
+                        if isinstance(device, vim.vm.device.VirtualCdrom):
+                            msg = "VM has a CDROM device connected!"
+                            msg_type = "VM has a CDROM device connected!"
+                        else:
+                            msg = "VM has a Floppy device connected!"
+                            msg_type = "VM has a Floppy device connected!"
+                            
                         warning = {
                             "name": f"{vm.name}",
-                            "message": f"VM has {msg_type} device connected. Verify if this is intended.",
+                            "message": msg,
                             "message_type": msg_type,
                             "vi_sdk_server": vi_sdk_info["server"],
                             "vi_sdk_uuid": vi_sdk_info["uuid"],
@@ -153,7 +159,7 @@ class VHealthCollector(BaseCollector):
                 warning = {
                     "name": f"{vm.name}",
                     "message": f"VM has {len(vm.snapshot.rootSnapshotList)} snapshot(s). Consider consolidating.",
-                    "message_type": "Snapshot",
+                    "message_type": "VM has an active snapshot!",
                     "vi_sdk_server": vi_sdk_info["server"],
                     "vi_sdk_uuid": vi_sdk_info["uuid"],
                 }
@@ -174,13 +180,13 @@ class VHealthCollector(BaseCollector):
 
                 # Check for tools issues
                 if tools_status not in ["toolsOk"]:
-                    message = f"VM Tools status: {tools_status}"
+                    message = f"VMware tools are out of date, not running or not installed!"
                     if tools_version:
-                        message += f" (version: {tools_version})"
+                        message += f" (status: {tools_status}, version: {tools_version})"
                     warning = {
                         "name": f"{vm.name}",
-                        "message": message + ". Consider updating or checking installation.",
-                        "message_type": "VM Tools",
+                        "message": message,
+                        "message_type": "VMware tools are out of date, not running or not installed!",
                         "vi_sdk_server": vi_sdk_info["server"],
                         "vi_sdk_uuid": vi_sdk_info["uuid"],
                     }
@@ -233,10 +239,12 @@ class VHealthCollector(BaseCollector):
 
                         # Alert if datastore is > 80% full
                         if usage_percent > 80:
+                            free_gb = free_space / (1024**3)
+                            message = f"On datastore {datastore.name} is {100-usage_percent:.1f}% disk space available! The threshold value is 20%"
                             warning = {
                                 "name": f"{datastore.name}",
-                                "message": f"Datastore {usage_percent:.1f}% full ({(free_space / (1024**3)):.1f}GB free). Consider cleanup.",
-                                "message_type": "Storage",
+                                "message": message,
+                                "message_type": "On datastore xx is yy% disk space available! The threshold value is zz%",
                                 "vi_sdk_server": vi_sdk_info["server"],
                                 "vi_sdk_uuid": vi_sdk_info["uuid"],
                             }
@@ -332,7 +340,8 @@ class VHealthCollector(BaseCollector):
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
 
             logger.debug(f"Searching datastore {datastore.name} for orphaned files...")
-            task = datastore.browser.SearchDatastore(spec=spec)
+            # Use SearchDatastore_Task (not SearchDatastore) and pass spec as positional arg
+            task = datastore.browser.SearchDatastore_Task(spec)
 
             # Wait for task (with timeout)
             start_time = time.time()
@@ -371,6 +380,16 @@ class VHealthCollector(BaseCollector):
 
         except Exception as e:
             logger.debug(f"Error scanning datastore {datastore.name}: {e}", exc_info=True)
+            # Record search datastore error
+            vi_sdk_info = self._get_vi_sdk_info()
+            warning = {
+                "name": f"Datastore: {datastore.name}",
+                "message": f"Search datastore error: {str(e)}",
+                "message_type": "Search datastore errors",
+                "vi_sdk_server": vi_sdk_info["server"],
+                "vi_sdk_uuid": vi_sdk_info["uuid"],
+            }
+            warnings.append(warning)
 
         return warnings
 
@@ -397,11 +416,19 @@ class VHealthCollector(BaseCollector):
                         # This is an orphaned/zombie file
                         message = self._get_zombie_message(file_path)
                         full_path = f"[{datastore_name}] {file_path}"
+                        
+                        # Determine message type based on file extension
+                        if file_path_lower.endswith(".vmdk"):
+                            msg_type = "Possible a zombie vmdk file! Please check."
+                        elif file_path_lower.endswith(".vmx"):
+                            msg_type = "Possible a zombie vm! Please check."
+                        else:
+                            msg_type = "Virtual machine consolidation needed"
 
                         warning = {
                             "name": full_path,
                             "message": message,
-                            "message_type": "Zombie",
+                            "message_type": msg_type,
                             "vi_sdk_server": vi_sdk_info["server"],
                             "vi_sdk_uuid": vi_sdk_info["uuid"],
                         }
@@ -434,13 +461,13 @@ class VHealthCollector(BaseCollector):
         file_lower = file_path.lower()
 
         if file_lower.endswith(".vmx"):
-            return "Possibly a Zombie VM! Please check."
+            return "Possible a zombie vm! Please check."
         elif file_lower.endswith(".vmtx"):
-            return "Possibly a Zombie Template! Please check."
+            return "Possible a zombie template! Please check."
         elif file_lower.endswith(".vmdk"):
-            return "Possibly a Zombie vmdk file! Please check."
+            return "Possible a zombie vmdk file! Please check."
         else:
-            return "Possibly an orphaned file! Please check."
+            return "Possible an orphaned file! Please check."
 
     def _get_vi_sdk_info(self):
         """Extract VI SDK information"""
