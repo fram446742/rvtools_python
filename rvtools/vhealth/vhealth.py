@@ -399,6 +399,7 @@ class VHealthCollector(BaseCollector):
         warnings = []
 
         try:
+            # First search for matching files AT THIS LEVEL
             spec = vim.host.DatastoreBrowser.SearchSpec()
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
             
@@ -442,27 +443,65 @@ class VHealthCollector(BaseCollector):
                 )
                 logger.debug(f"Found {len(result_warnings)} orphaned files at {datastore_path}")
                 warnings.extend(result_warnings)
+            else:
+                logger.debug(f"No results from search at {datastore_path} (state: {str(task.info.state)})")
+
+            # NOW: Explicitly search for subdirectories
+            # We do this by searching without matchPattern to get ALL files including folders
+            logger.debug(f"Searching for subdirectories at {datastore_path}")
+            try:
+                dir_spec = vim.host.DatastoreBrowser.SearchSpec()
+                # Don't set matchPattern - this will return all entries including directories
+                dir_spec.details = vim.host.DatastoreBrowser.FileInfo.Details()
+                dir_spec.details.fileOwner = True
+                dir_spec.details.fileSize = True
+                dir_spec.details.modification = True
                 
-                # Extract unique directory names from the search results' file paths
-                # This helps us identify subdirectories to search recursively
-                subdirs = set()
-                if hasattr(task.info.result, "file") and task.info.result.file:
-                    for file_entry in task.info.result.file:
-                        if hasattr(file_entry, "path"):
-                            path = file_entry.path
-                            # Check if path contains directory separators
-                            if "/" in path:
-                                # Extract directory part
-                                dir_part = path.split("/")[0]
-                                subdirs.add(dir_part)
-                            elif "\\" in path:
-                                dir_part = path.split("\\")[0]
-                                subdirs.add(dir_part)
+                dir_task = datastore.browser.SearchDatastore_Task(datastore_path, dir_spec)
+            except Exception as e:
+                logger.debug(f"Could not enumerate directory contents at {datastore_path}: {e}")
+                return warnings
+
+            # Wait for directory enumeration
+            start_time = time.time()
+            while True:
+                task_state = str(dir_task.info.state)
+                if task_state == "success":
+                    break
+                elif task_state == "error":
+                    logger.debug(f"Dir enum error at {datastore_path}: {dir_task.info.error}")
+                    break
+                elif task_state in ["running", "queued"]:
+                    if time.time() - start_time > timeout:
+                        logger.debug(f"Dir enum timeout for {datastore_path}")
+                        break
+                    time.sleep(0.5)
+                else:
+                    break
+
+            # Extract subdirectories from enumeration results
+            if str(dir_task.info.state) == "success" and dir_task.info.result:
+                subdirs = []
+                if hasattr(dir_task.info.result, "file") and dir_task.info.result.file:
+                    logger.debug(f"Directory enumeration at {datastore_path} returned {len(dir_task.info.result.file)} entries")
+                    for file_entry in dir_task.info.result.file:
+                        # Check if this is a directory
+                        try:
+                            if hasattr(file_entry, "fileType"):
+                                file_type_str = str(file_entry.fileType)
+                                if "directory" in file_type_str.lower():
+                                    if hasattr(file_entry, "path"):
+                                        subdir_name = file_entry.path
+                                        logger.debug(f"  Found directory: {subdir_name}")
+                                        subdirs.append(subdir_name)
+                        except Exception as e:
+                            logger.debug(f"Error checking fileType: {e}")
+                            continue
                 
-                logger.debug(f"Identified {len(subdirs)} subdirectories from file paths at {datastore_path}: {subdirs}")
+                logger.debug(f"Found {len(subdirs)} subdirectories to recursively search at {datastore_path}")
                 
                 # Recursively search each subdirectory
-                for subdir_name in sorted(subdirs):
+                for subdir_name in subdirs:
                     if datastore_path.endswith("]"):
                         # First level: [datastore]
                         subdir_path = f"{datastore_path} {subdir_name}"
@@ -470,12 +509,12 @@ class VHealthCollector(BaseCollector):
                         # Nested level: [datastore] path/to/dir
                         subdir_path = f"{datastore_path}/{subdir_name}"
                     
-                    logger.debug(f"Recursively searching identified subdirectory: {subdir_path}")
+                    logger.debug(f"Recursively searching subdirectory: {subdir_path}")
                     warnings.extend(
                         self._search_datastore_path(datastore, subdir_path, registered_files)
                     )
             else:
-                logger.debug(f"No results from search at {datastore_path} (state: {str(task.info.state)})")
+                logger.debug(f"No directory enumeration results from {datastore_path}")
 
         except Exception as e:
             logger.debug(f"Error searching datastore path {datastore_path}: {e}", exc_info=True)
