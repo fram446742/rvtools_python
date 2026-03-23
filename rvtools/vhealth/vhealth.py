@@ -380,8 +380,9 @@ class VHealthCollector(BaseCollector):
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
 
             logger.debug(f"Searching datastore {datastore.name} for orphaned files...")
-            # SearchDatastore_Task requires TWO parameters: datastore path (str) and spec
-            task = datastore.browser.SearchDatastore_Task(datastore.name, spec)
+            # SearchDatastore_Task requires: datastore path (formatted as [name]) and spec
+            datastore_path = f"[{datastore.name}]"
+            task = datastore.browser.SearchDatastore_Task(datastore_path, spec)
 
             # Wait for task with timeout
             start_time = time.time()
