@@ -117,6 +117,13 @@ def get_args():
         help="Path to configuration file (default: ~/.rvtools.toml)",
     )
 
+    parser.add_argument(
+        "--include-custom-fields",
+        required=False,
+        action="store_true",
+        help="Include extra custom field columns (e.g., backup protection metadata). Default: hidden to match original RVTools format",
+    )
+
     return parser.parse_args()
 
 
@@ -303,6 +310,14 @@ def process_single_vcenter(
 def main():
     """Main entry point"""
     args = get_args()
+
+    # Set up custom fields flag
+    from rvtools.collectors.base_collector import set_include_custom_fields
+    set_include_custom_fields(args.include_custom_fields)
+    if args.include_custom_fields:
+        logger.info("Including extra custom field columns (backup metadata, etc.)")
+    else:
+        logger.info("Hiding extra custom field columns (use --include-custom-fields to show)")
 
     # Parse threads
     if args.threads.lower() == "auto":

@@ -59,8 +59,14 @@ def extract_custom_metadata(vm):
         vm: pyVmomi VirtualMachine object
 
     Returns:
-        dict: Dictionary with 3 keys containing extracted metadata values
+        dict: Dictionary with 3 keys containing extracted metadata values, or empty dict if disabled
     """
+    from rvtools.collectors.base_collector import should_include_custom_fields
+
+    # Return empty dict if custom fields are disabled
+    if not should_include_custom_fields():
+        return {}
+
     metadata = {
         "com_emc_avamar_vmware_snapshot": "",
         "com_vmware_vdp2_is_protected": "",

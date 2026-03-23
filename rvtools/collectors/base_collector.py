@@ -9,6 +9,9 @@ logger = logging.getLogger("rvtools")
 # Global view cache shared across all collectors
 _global_view_cache = None
 
+# Global flag for including custom fields
+_include_custom_fields = False
+
 
 def set_global_view_cache(cache):
     """Set the global view cache for all collectors"""
@@ -19,6 +22,17 @@ def set_global_view_cache(cache):
 def get_global_view_cache():
     """Get the global view cache"""
     return _global_view_cache
+
+
+def set_include_custom_fields(include):
+    """Set whether to include custom field columns in exports"""
+    global _include_custom_fields
+    _include_custom_fields = include
+
+
+def should_include_custom_fields():
+    """Check if custom field columns should be included"""
+    return _include_custom_fields
 
 
 class BaseCollector(ABC):

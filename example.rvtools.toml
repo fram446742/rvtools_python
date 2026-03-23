@@ -15,6 +15,7 @@ directory = "/path/to/exports"
 format = "xlsx"          # Options: xlsx, csv, json-separate, json-unified
 threads = "auto"         # Options: auto (default), or number like 8, 16
 verbose = false          # Options: true, false
+include_custom_fields = false  # Options: true, false. Include backup metadata columns
 
 # ============================================================
 # Production Environment
@@ -78,6 +79,8 @@ verbose = false
 #    - format: Default is "xlsx" (Excel format)
 #    - threads: Default is "auto" (min(8, cpu_count))
 #    - verbose: Default is false
+#    - include_custom_fields: Default is false. Set to true to include backup metadata columns
+#      (com_emc_avamar_vmware_snapshot, com_vmware_vdp2_is_protected, com_vmware_vdp2_protected_by)
 #
 # 3. Export Formats:
 #    - xlsx: Single Excel file with all sheets (recommended)
