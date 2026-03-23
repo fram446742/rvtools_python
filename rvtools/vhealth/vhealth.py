@@ -374,27 +374,41 @@ class VHealthCollector(BaseCollector):
         return registered_files
 
     def _scan_datastore_for_orphans(self, datastore, registered_files):
-        """Scan a single datastore for orphaned VM files"""
+        """Scan a single datastore for orphaned VM files - searches all directories"""
         warnings = []
 
         try:
             if not datastore.browser:
                 return warnings
 
+            logger.debug(f"Searching datastore {datastore.name} for orphaned files... (registered files: {len(registered_files)})")
+            datastore_path = f"[{datastore.name}]"
+            
+            # Search root and collect all warnings
+            warnings.extend(
+                self._search_datastore_path(datastore, datastore_path, registered_files)
+            )
+
+        except Exception as e:
+            logger.debug(f"Error scanning datastore {datastore.name}: {e}", exc_info=True)
+
+        return warnings
+
+    def _search_datastore_path(self, datastore, datastore_path, registered_files):
+        """Search a specific datastore path for orphaned files"""
+        warnings = []
+
+        try:
             spec = vim.host.DatastoreBrowser.SearchSpec()
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
-            
-            logger.debug(f"Searching datastore {datastore.name} for orphaned files... (registered files: {len(registered_files)})")
-            # SearchDatastore_Task requires: datastore path (formatted as [name]) and spec
-            datastore_path = f"[{datastore.name}]"
             
             try:
                 task = datastore.browser.SearchDatastore_Task(datastore_path, spec)
             except vim.fault.NoPermission as e:
-                logger.debug(f"Permission denied searching datastore {datastore.name}: {e}")
+                logger.debug(f"Permission denied searching {datastore_path}: {e}")
                 return warnings
             except Exception as e:
-                logger.debug(f"Error initiating search on datastore {datastore.name}: {e}")
+                logger.debug(f"Error initiating search on {datastore_path}: {e}")
                 return warnings
 
             # Wait for task with timeout
@@ -406,11 +420,11 @@ class VHealthCollector(BaseCollector):
                 if task_state == "success":
                     break
                 elif task_state == "error":
-                    logger.debug(f"Task error for {datastore.name}: {task.info.error}")
+                    logger.debug(f"Task error for {datastore_path}: {task.info.error}")
                     break
                 elif task_state in ["running", "queued"]:
                     if time.time() - start_time > timeout:
-                        logger.debug(f"Datastore scan timeout for {datastore.name}")
+                        logger.debug(f"Datastore scan timeout for {datastore_path}")
                         break
                     time.sleep(0.5)
                 else:
@@ -421,18 +435,41 @@ class VHealthCollector(BaseCollector):
                 file_count = 0
                 if hasattr(task.info.result, "file") and task.info.result.file:
                     file_count = len(task.info.result.file)
-                logger.debug(f"Datastore {datastore.name} search found {file_count} matching files")
+                logger.debug(f"Search at {datastore_path} found {file_count} matching files")
                 
                 result_warnings = self._process_datastore_search_results(
                     task.info.result, datastore.name, registered_files
                 )
-                logger.debug(f"Found {len(result_warnings)} orphaned files on {datastore.name}")
+                logger.debug(f"Found {len(result_warnings)} orphaned files at {datastore_path}")
                 warnings.extend(result_warnings)
+                
+                # Extract subdirectories and search them recursively
+                subdirs = set()
+                if hasattr(task.info.result, "file") and task.info.result.file:
+                    for file_entry in task.info.result.file:
+                        if hasattr(file_entry, "fileType") and str(file_entry.fileType) == "directory":
+                            if hasattr(file_entry, "path"):
+                                subdir_name = file_entry.path
+                                # Build full path for subdirectory search
+                                if datastore_path.endswith("]"):
+                                    # First level: [datastore]
+                                    subdir_path = f"{datastore_path} {subdir_name}"
+                                else:
+                                    # Nested level: [datastore] path/to/dir
+                                    subdir_path = f"{datastore_path}/{subdir_name}"
+                                subdirs.add(subdir_path)
+                
+                # Recursively search subdirectories
+                for subdir_path in subdirs:
+                    logger.debug(f"Recursively searching: {subdir_path}")
+                    warnings.extend(
+                        self._search_datastore_path(datastore, subdir_path, registered_files)
+                    )
             else:
-                logger.debug(f"No results from datastore search on {datastore.name} (state: {str(task.info.state)})")
+                logger.debug(f"No results from search at {datastore_path} (state: {str(task.info.state)})")
 
         except Exception as e:
-            logger.debug(f"Error scanning datastore {datastore.name}: {e}", exc_info=True)
+            logger.debug(f"Error searching datastore path {datastore_path}: {e}", exc_info=True)
 
         return warnings
 
