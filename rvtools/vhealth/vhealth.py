@@ -395,7 +395,7 @@ class VHealthCollector(BaseCollector):
         return warnings
 
     def _search_datastore_path(self, datastore, datastore_path, registered_files):
-        """Search a specific datastore path for orphaned files"""
+        """Search a specific datastore path for orphaned files (optimized)"""
         warnings = []
 
         try:
@@ -406,10 +406,10 @@ class VHealthCollector(BaseCollector):
             try:
                 task = datastore.browser.SearchDatastore_Task(datastore_path, spec)
             except vim.fault.NoPermission as e:
-                logger.debug(f"Permission denied searching {datastore_path}: {e}")
+                logger.debug(f"Permission denied: {datastore_path}")
                 return warnings
             except Exception as e:
-                logger.debug(f"Error initiating search on {datastore_path}: {e}")
+                logger.debug(f"Error searching: {datastore_path} - {e}")
                 return warnings
 
             # Wait for task with timeout
@@ -421,45 +421,29 @@ class VHealthCollector(BaseCollector):
                 if task_state == "success":
                     break
                 elif task_state == "error":
-                    logger.debug(f"Task error for {datastore_path}: {task.info.error}")
+                    logger.debug(f"Search error: {datastore_path}")
                     break
                 elif task_state in ["running", "queued"]:
                     if time.time() - start_time > timeout:
-                        logger.debug(f"Datastore scan timeout for {datastore_path}")
+                        logger.debug(f"Search timeout: {datastore_path}")
                         break
                     time.sleep(0.5)
                 else:
                     break
 
             if str(task.info.state) == "success" and task.info.result:
-                # Log all files found
-                file_count = 0
-                if hasattr(task.info.result, "file") and task.info.result.file:
-                    file_count = len(task.info.result.file)
-                logger.debug(f"Search at {datastore_path} found {file_count} matching files")
-                
                 result_warnings = self._process_datastore_search_results(
                     task.info.result, datastore.name, registered_files
                 )
-                logger.debug(f"Found {len(result_warnings)} orphaned files at {datastore_path}")
                 warnings.extend(result_warnings)
-            else:
-                logger.debug(f"No results from search at {datastore_path} (state: {str(task.info.state)})")
-
-            # NOW: Explicitly search for subdirectories
-            # We do this by searching without matchPattern to get ALL files including folders
-            logger.debug(f"Searching for subdirectories at {datastore_path}")
+            
+            # NOW: Search for subdirectories (no matchPattern to get all entries)
             try:
                 dir_spec = vim.host.DatastoreBrowser.SearchSpec()
-                # Don't set matchPattern - this will return all entries including directories
                 dir_spec.details = vim.host.DatastoreBrowser.FileInfo.Details()
                 dir_spec.details.fileOwner = True
-                dir_spec.details.fileSize = True
-                dir_spec.details.modification = True
-                
                 dir_task = datastore.browser.SearchDatastore_Task(datastore_path, dir_spec)
-            except Exception as e:
-                logger.debug(f"Could not enumerate directory contents at {datastore_path}: {e}")
+            except Exception:
                 return warnings
 
             # Wait for directory enumeration
@@ -469,90 +453,52 @@ class VHealthCollector(BaseCollector):
                 if task_state == "success":
                     break
                 elif task_state == "error":
-                    logger.debug(f"Dir enum error at {datastore_path}: {dir_task.info.error}")
                     break
                 elif task_state in ["running", "queued"]:
                     if time.time() - start_time > timeout:
-                        logger.debug(f"Dir enum timeout for {datastore_path}")
                         break
                     time.sleep(0.5)
                 else:
                     break
 
-            # Extract subdirectories from enumeration results
+            # Extract subdirectories and search recursively
             if str(dir_task.info.state) == "success" and dir_task.info.result:
-                subdirs = []
                 if hasattr(dir_task.info.result, "file") and dir_task.info.result.file:
-                    logger.debug(f"Directory enumeration at {datastore_path} returned {len(dir_task.info.result.file)} entries")
-                    for i, file_entry in enumerate(dir_task.info.result.file):
-                        # Try multiple ways to identify directories
+                    subdirs = []
+                    for file_entry in dir_task.info.result.file:
                         try:
-                            is_dir = False
-                            attrs = []
+                            # Identify directories: no leading dot, no extension, or has folderFileInfo
+                            path = getattr(file_entry, "path", "")
+                            if not path or path.startswith("."):
+                                continue
                             
-                            # Method 1: Check fileType attribute
-                            if hasattr(file_entry, "fileType"):
-                                file_type_str = str(file_entry.fileType)
-                                attrs.append(f"fileType={file_type_str}")
-                                if "directory" in file_type_str.lower():
-                                    is_dir = True
+                            is_dir = (hasattr(file_entry, "folderFileInfo") or 
+                                     ("." not in path.split("/")[-1]))
                             
-                            # Method 2: Check for key/keyName which might indicate a resource
-                            if hasattr(file_entry, "key"):
-                                attrs.append(f"hasKey=True")
-                            
-                            # Method 3: Check if there's a folderFileInfo
-                            if hasattr(file_entry, "folderFileInfo"):
-                                attrs.append(f"hasFolderFileInfo=True")
-                                is_dir = True  # If it has folderFileInfo, it's likely a folder
-                            
-                            # Method 4: Heuristic - if path doesn't start with . and doesn't have an extension, it might be a directory
-                            path = getattr(file_entry, "path", "NOPATH")
-                            if not path.startswith(".") and "." not in path.split("/")[-1]:
-                                # Looks like it might be a directory
-                                attrs.append(f"looksLikeDir=True")
-                                # But only if fileType wasn't explicitly something else
-                                if not hasattr(file_entry, "fileType"):
-                                    is_dir = True
-                            
-                            # Log first 10 entries with all attributes
-                            if i < 10:
-                                logger.debug(f"  Entry {i}: path={path}, {', '.join(attrs)}, isDir={is_dir}")
-                            
-                            if is_dir and hasattr(file_entry, "path"):
-                                subdir_name = file_entry.path
-                                logger.debug(f"  -> IDENTIFIED AS DIRECTORY: {subdir_name}")
-                                subdirs.append(subdir_name)
-                        except Exception as e:
-                            logger.debug(f"Error checking entry {i}: {e}")
+                            if is_dir:
+                                subdirs.append(path)
+                        except Exception:
                             continue
-                
-                logger.debug(f"Found {len(subdirs)} subdirectories to recursively search at {datastore_path}")
-                
-                # Recursively search each subdirectory
-                for subdir_name in subdirs:
-                    if datastore_path.endswith("]"):
-                        # First level: [datastore]
-                        subdir_path = f"{datastore_path} {subdir_name}"
-                    else:
-                        # Nested level: [datastore] path/to/dir
-                        subdir_path = f"{datastore_path}/{subdir_name}"
                     
-                    logger.debug(f"Recursively searching subdirectory: {subdir_path}")
-                    warnings.extend(
-                        self._search_datastore_path(datastore, subdir_path, registered_files)
-                    )
-            else:
-                logger.debug(f"No directory enumeration results from {datastore_path}")
+                    # Recursively search each subdirectory
+                    for subdir_name in subdirs:
+                        if datastore_path.endswith("]"):
+                            subdir_path = f"{datastore_path} {subdir_name}"
+                        else:
+                            subdir_path = f"{datastore_path}/{subdir_name}"
+                        
+                        warnings.extend(
+                            self._search_datastore_path(datastore, subdir_path, registered_files)
+                        )
 
         except Exception as e:
-            logger.debug(f"Error searching datastore path {datastore_path}: {e}", exc_info=True)
+            logger.debug(f"Search error: {datastore_path} - {e}")
 
         return warnings
 
 
     def _process_datastore_search_results(self, search_results, datastore_name, registered_files):
-        """Process files found in datastore search for orphaned entries"""
+        """Process files found in datastore search for orphaned entries with deduplication"""
         warnings = []
 
         try:
@@ -560,43 +506,71 @@ class VHealthCollector(BaseCollector):
                 return warnings
 
             vi_sdk_info = self._get_vi_sdk_info()
-            logger.debug(f"Processing {len(search_results.file)} files from datastore search")
-
+            
+            # First pass: group files by base name and filter companion files
+            file_groups = {}  # basename -> list of files
             for file_entry in search_results.file:
                 try:
                     if not hasattr(file_entry, "path"):
                         continue
-
-                    # Normalize path for comparison (handle different separators)
-                    file_path = file_entry.path.lower()
-                    file_path_normalized = file_path.replace("\\", "/")
                     
-                    logger.debug(f"Checking file: {file_entry.path}")
+                    file_path = file_entry.path.lower()
+                    
+                    # Extract base name (before first dot or full name if no dot)
+                    path_parts = file_path.rsplit(".", 1)
+                    basename = path_parts[0]
+                    ext = path_parts[1] if len(path_parts) > 1 else ""
+                    
+                    if basename not in file_groups:
+                        file_groups[basename] = []
+                    file_groups[basename].append((ext, file_path, file_entry))
+                except Exception:
+                    continue
+            
+            # Second pass: deduplicate - keep primary files and skip companions
+            # For VMDK files specifically: skip -flat.vmdk, -ctk.vmdk if main .vmdk exists
+            # For VMX and VMTX: report each separately
+            processed = set()
+            
+            for basename, files in file_groups.items():
+                # Separate primary and companion files
+                primary_files = []
+                companion_files = []
+                
+                for ext, file_path, file_entry in files:
+                    # Check if this is a companion file (only for .vmdk)
+                    if ext == "vmdk":
+                        # Check if this is a companion like -flat.vmdk or -ctk.vmdk
+                        filename = file_path.split("/")[-1]
+                        if "-flat.vmdk" in file_path or "-ctk.vmdk" in file_path or "-vswp.vmdk" in file_path:
+                            companion_files.append((ext, file_path, file_entry))
+                        else:
+                            primary_files.append((ext, file_path, file_entry))
+                    else:
+                        # For .vmx and .vmtx, all are primary
+                        primary_files.append((ext, file_path, file_entry))
+                
+                # Report primary files
+                files_to_report = primary_files
+                
+                # If no primary VMDK files, report companions as edge cases
+                if not primary_files:
+                    files_to_report = companion_files
+                
+                # Check each file for orphaned status
+                for ext, file_path, file_entry in files_to_report:
+                    if file_path in processed:
+                        continue
+                    
+                    file_path_normalized = file_path.replace("\\", "/")
                     
                     # Check if file is in registered files
                     is_registered = (file_path_normalized in registered_files)
                     
-                    # For -flat.vmdk files, check if the main .vmdk is registered
-                    # (flat files are automatic components of VMDK files)
-                    if not is_registered and file_path_normalized.endswith("-flat.vmdk"):
-                        main_vmdk = file_path_normalized.replace("-flat.vmdk", ".vmdk")
-                        is_registered = (main_vmdk in registered_files)
-                        if is_registered:
-                            logger.debug(f"  -> Registered as component of {main_vmdk}")
-                        else:
-                            logger.debug(f"  -> Orphaned (-flat.vmdk without main .vmdk)")
-                    
-                    # Also check with different path separators in case registered files use backslashes
+                    # Also check with backslash format
                     if not is_registered:
                         file_path_backslash = file_path.replace("/", "\\")
                         is_registered = (file_path_backslash in registered_files)
-                        if is_registered:
-                            logger.debug(f"  -> Registered (backslash path format)")
-                    
-                    if is_registered:
-                        logger.debug(f"  -> Registered")
-                    else:
-                        logger.debug(f"  -> ORPHANED")
                     
                     if not is_registered:
                         full_path = f"[{datastore_name}] {file_entry.path}"
@@ -619,10 +593,7 @@ class VHealthCollector(BaseCollector):
                             "vi_sdk_uuid": vi_sdk_info["uuid"],
                         }
                         warnings.append(warning)
-                        logger.debug(f"Added orphaned file: {full_path}")
-
-                except Exception as e:
-                    logger.debug(f"Error processing file entry: {e}")
+                        processed.add(file_path)
 
         except Exception as e:
             logger.debug(f"Error processing search results: {e}")
