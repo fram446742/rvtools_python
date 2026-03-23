@@ -248,9 +248,9 @@ WARNING - No data collected for vHealth
 ```
 
 **Most common causes**:
-1. Datastore browser search is limited to root folder only (no recursive traversal)
-2. Datastore browser permissions are missing
-3. Environment genuinely has no orphaned `.vmx`, `.vmtx`, or `.vmdk` files
+1. No active alarms are currently triggered in vCenter
+2. Account does not have alarm read privileges on root folder objects
+3. Alarm manager access is restricted by permissions
 
 **What to verify**:
 
@@ -259,18 +259,18 @@ WARNING - No data collected for vHealth
 rvtools --sheets vHealth --verbose --config ~/.rvtools.toml
 
 # 2. Look for datastore browser errors in log
-grep -E "vHealth|datastore|SearchDatastore|orphan" rvtools_*.log
+grep -E "vHealth|alarm|GetTriggeredAlarms|GetAlarm" rvtools_*.log
 ```
 
 **Expected healthy behavior**:
-- vHealth should use recursive datastore browsing for `*.vmx`, `*.vmtx`, and `*.vmdk`
-- Returned file paths should be compared against registered VM config/disk paths
-- Any unreferenced file should appear as a `Zombie` warning row
+- vHealth first requests active triggered alarms from root folder scope
+- If no active alarms are returned, it falls back to alarm definitions
+- Each row includes `name`, `message`, inferred `message_type`, and vCenter metadata
 
 **If still empty after fix**:
-- Confirm account can browse datastore contents in vSphere Client
-- Test against a datastore known to contain unregistered VM files
-- Verify the environment is not fully clean (no orphaned files)
+- Confirm the account can view alarms in vSphere Client
+- Trigger a test alarm and rerun `--sheets vHealth`
+- Verify no restrictive role removes alarm visibility at root folder level
 
 ### Export Format Errors
 

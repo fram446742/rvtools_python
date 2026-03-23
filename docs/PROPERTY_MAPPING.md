@@ -150,20 +150,20 @@ Distributed virtual switch configuration.
 
 ## vHealth Sheet (5 properties)
 
-Datastore orphan/zombie file detection results.
+vCenter alarm and health results.
 
 | Column | Source | Type | Example | Description |
 |--------|--------|------|---------|-------------|
-| name | datastore browser result | string | [datastore1] old-vm/old-vm.vmx | Full datastore file path of orphaned entry |
-| message | derived from extension | string | Possibly a Zombie VM! Please check. | Human-readable warning message |
-| message_type | static | string | Zombie | Warning category |
+| name | alarm.info.name | string | Virtual machine disk consolidation needed | Alarm display name |
+| message | alarm.info.description | string | The virtual machine disks need consolidation. | Alarm description text |
+| message_type | derived from alarm name/description | string | Consolidation | Alarm category derived from keywords |
 | vi_sdk_server | content.about.apiVersion | string | 8.0.3 | vSphere API version |
 | vi_sdk_uuid | content.about.instanceUuid | string | 550e8400-e29b-41d4-a716-446655440000 | vCenter instance UUID |
 
 Notes:
-- vHealth searches datastores recursively for `*.vmx`, `*.vmtx`, and `*.vmdk` files.
-- A file is flagged when it is found in datastore search results but not referenced by any registered VM config or disk backing.
-- If vCenter permissions do not allow datastore browser access, vHealth may return no rows.
+- vHealth first reads active triggered alarms from `alarmManager.GetTriggeredAlarms`.
+- If no active alarms are returned, it falls back to alarm definitions via `alarmManager.GetAlarm`.
+- `message_type` is inferred from alarm keywords (for example: `Zombie`, `Snapshots`, `Consolidation`, `CPU`, `Memory`).
 
 ## Complete Sheet Index
 
