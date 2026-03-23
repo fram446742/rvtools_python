@@ -485,27 +485,46 @@ class VHealthCollector(BaseCollector):
                 if hasattr(dir_task.info.result, "file") and dir_task.info.result.file:
                     logger.debug(f"Directory enumeration at {datastore_path} returned {len(dir_task.info.result.file)} entries")
                     for i, file_entry in enumerate(dir_task.info.result.file):
-                        # Check if this is a directory
+                        # Try multiple ways to identify directories
                         try:
-                            # Log what we're checking
-                            file_type_str = "UNKNOWN"
                             is_dir = False
+                            attrs = []
                             
+                            # Method 1: Check fileType attribute
                             if hasattr(file_entry, "fileType"):
                                 file_type_str = str(file_entry.fileType)
+                                attrs.append(f"fileType={file_type_str}")
                                 if "directory" in file_type_str.lower():
                                     is_dir = True
                             
-                            # Log each entry (at least first 5)
-                            if i < 5:
-                                logger.debug(f"  Entry {i}: path={getattr(file_entry, 'path', 'NO_PATH')}, fileType={file_type_str}, isDir={is_dir}")
+                            # Method 2: Check for key/keyName which might indicate a resource
+                            if hasattr(file_entry, "key"):
+                                attrs.append(f"hasKey=True")
+                            
+                            # Method 3: Check if there's a folderFileInfo
+                            if hasattr(file_entry, "folderFileInfo"):
+                                attrs.append(f"hasFolderFileInfo=True")
+                                is_dir = True  # If it has folderFileInfo, it's likely a folder
+                            
+                            # Method 4: Heuristic - if path doesn't start with . and doesn't have an extension, it might be a directory
+                            path = getattr(file_entry, "path", "NOPATH")
+                            if not path.startswith(".") and "." not in path.split("/")[-1]:
+                                # Looks like it might be a directory
+                                attrs.append(f"looksLikeDir=True")
+                                # But only if fileType wasn't explicitly something else
+                                if not hasattr(file_entry, "fileType"):
+                                    is_dir = True
+                            
+                            # Log first 10 entries with all attributes
+                            if i < 10:
+                                logger.debug(f"  Entry {i}: path={path}, {', '.join(attrs)}, isDir={is_dir}")
                             
                             if is_dir and hasattr(file_entry, "path"):
                                 subdir_name = file_entry.path
-                                logger.debug(f"  -> FOUND DIRECTORY: {subdir_name}")
+                                logger.debug(f"  -> IDENTIFIED AS DIRECTORY: {subdir_name}")
                                 subdirs.append(subdir_name)
                         except Exception as e:
-                            logger.debug(f"Error checking fileType for entry {i}: {e}")
+                            logger.debug(f"Error checking entry {i}: {e}")
                             continue
                 
                 logger.debug(f"Found {len(subdirs)} subdirectories to recursively search at {datastore_path}")
