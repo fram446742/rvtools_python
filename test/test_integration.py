@@ -101,6 +101,33 @@ directory = "/tmp/exports"
         verbose = cfg.get("verbose", False)
         self.assertFalse(verbose)
 
+    def test_corecode_single_config_has_all_flags(self):
+        """CoreCode should map optional TOML fields while parsing config"""
+        from rvtools.corerv import CoreCode
+
+        config_content = """
+[default]
+vcenter = "vc.domain.com"
+username = "admin"
+password = "pass"
+directory = "/tmp/exports"
+format = "csv"
+threads = "4"
+sheets = "vInfo,vPartition"
+verbose = true
+include_custom_fields = true
+"""
+        config_file = Path(self.temp_dir) / "test_config_flags.toml"
+        config_file.write_text(config_content)
+
+        parsed = CoreCode().read_conf_file(str(config_file))
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed._format, "csv")
+        self.assertEqual(parsed._threads, "4")
+        self.assertEqual(parsed._sheets, "vInfo,vPartition")
+        self.assertTrue(parsed._verbose)
+        self.assertTrue(parsed._include_custom_fields)
+
 
 class TestExportFormats(unittest.TestCase):
     """Test export format validation"""

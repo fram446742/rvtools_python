@@ -80,7 +80,7 @@ def get_args():
         "--format",
         required=False,
         action="store",
-        default="xlsx",
+        default=None,
         choices=["xlsx", "csv", "json-separate", "json-unified"],
         help="Export format: xlsx (default), csv, json-separate, json-unified",
     )
@@ -89,6 +89,7 @@ def get_args():
         "--sheets",
         required=False,
         action="store",
+        default=None,
         help="Comma-separated list of sheets to collect (default: all). Example: vInfo,vPartition,vHealth",
     )
 
@@ -96,7 +97,7 @@ def get_args():
         "--threads",
         required=False,
         action="store",
-        default="auto",
+        default=None,
         help="Number of threads for parallel collection (default: auto = min(8, cpu_count))",
     )
 
@@ -105,6 +106,7 @@ def get_args():
         "--verbose",
         required=False,
         action="store_true",
+        default=None,
         help="Show additional info",
     )
 
@@ -121,6 +123,7 @@ def get_args():
         "--include-custom-fields",
         required=False,
         action="store_true",
+        default=None,
         help="Include extra custom field columns (e.g., backup protection metadata). Default: hidden to match original RVTools format",
     )
 
@@ -312,33 +315,24 @@ def process_single_vcenter(
             handler.flush() if hasattr(handler, "flush") else None
 
 
+def _resolve_setting(cli_value, config_value, default=None):
+    if cli_value is not None:
+        return cli_value
+    if config_value is not None:
+        return config_value
+    return default
+
+
 def main():
     """Main entry point"""
     args = get_args()
 
-    # Set up custom fields flag
-    from rvtools.collectors.base_collector import set_include_custom_fields
-    set_include_custom_fields(args.include_custom_fields)
-    if args.include_custom_fields:
-        logger.info("Including extra custom field columns (backup metadata, etc.)")
-    else:
-        logger.info("Hiding extra custom field columns (use --include-custom-fields to show)")
-
-    # Parse threads
-    if args.threads.lower() == "auto":
-        max_workers = None
-    else:
-        try:
-            max_workers = int(args.threads)
-        except ValueError:
-            logger.error("--threads must be a number or 'auto'")
-            sys.exit(1)
-
-    # Determine export format
-    export_format = args.format or "xlsx"
-
-    # Determine sheets filter
-    sheets_filter = args.sheets
+    # CLI-level options take precedence, config values are fallback
+    cli_format = args.format
+    cli_threads = args.threads
+    cli_sheets = args.sheets
+    cli_verbose = args.verbose
+    cli_include_custom_fields = args.include_custom_fields
 
     # Get configuration
     if (
@@ -379,6 +373,8 @@ def main():
                     "directory": conn._directory,
                     "format": conn._format,
                     "threads": conn._threads,
+                    "sheets": getattr(conn, '_sheets', None),
+                    "verbose": getattr(conn, '_verbose', False),
                     "include_custom_fields": conn._include_custom_fields,
                     "_section_name": "default",
                 }
@@ -391,13 +387,23 @@ def main():
                 "username": args.username,
                 "password": args.password,
                 "directory": args.directory,
+                "format": None,
+                "threads": None,
+                "sheets": None,
+                "verbose": None,
+                "include_custom_fields": None,
                 "_section_name": "cli-args",
             }
         ]
 
+    # Choose global verbose based on CLI or any config value
+    global_verbose = cli_verbose if cli_verbose is not None else any(
+        bool(config.get("verbose", False)) for config in configs_to_process
+    )
+
     # Setup logging (use directory from first config)
     directory = configs_to_process[0].get("directory")
-    logger_instance, log_file = setup_logging(directory, verbose=args.verbose)
+    logger_instance, log_file = setup_logging(directory, verbose=global_verbose)
 
     if not os.path.isdir(directory):
         logger.error(f"Directory does not exist: {directory}")
@@ -407,6 +413,39 @@ def main():
     success_count = 0
     for config in configs_to_process:
         try:
+            # Per-vCenter effective settings
+            export_format = _resolve_setting(cli_format, config.get("format"), "xlsx")
+            threads = _resolve_setting(cli_threads, config.get("threads"), "auto")
+            sheets_filter = _resolve_setting(cli_sheets, config.get("sheets"), None)
+            verbose = _resolve_setting(cli_verbose, config.get("verbose"), False)
+            include_custom_fields = _resolve_setting(
+                cli_include_custom_fields,
+                config.get("include_custom_fields"),
+                False,
+            )
+
+            # Evolve threads setting to max_workers
+            if isinstance(threads, str) and threads.lower() == "auto":
+                max_workers = None
+            else:
+                try:
+                    max_workers = int(threads)
+                except Exception:
+                    logger.error("threads must be a number or 'auto'")
+                    sys.exit(1)
+
+            # Reflect verbose per config
+            if verbose:
+                logger.info("Verbose output enabled")
+
+            # Set custom fields per vCenter directly before collection
+            from rvtools.collectors.base_collector import set_include_custom_fields
+            set_include_custom_fields(include_custom_fields)
+            if include_custom_fields:
+                logger.info("Including extra custom field columns (backup metadata, etc.)")
+            else:
+                logger.info("Hiding extra custom field columns (use --include-custom-fields to show)")
+
             section_name = config.get("_section_name", config.get("vcenter", "unknown"))
             logger.info(f"{'=' * 60}")
             logger.info(f"Processing vCenter: {section_name}")
@@ -420,7 +459,7 @@ def main():
                 export_format=export_format,
                 max_workers=max_workers,
                 sheets_filter=sheets_filter,
-                include_custom_fields=config.get("include_custom_fields", args.include_custom_fields),
+                include_custom_fields=include_custom_fields,
             )
 
             if success:
@@ -438,7 +477,6 @@ def main():
 
     if success_count == 0:
         sys.exit(1)
-        sys.exit(1)
 
     logger.info(f"Log file: {log_file}")
     logger.info("Collection completed successfully")
@@ -447,7 +485,6 @@ def main():
     for handler in logger.handlers:
         handler.flush() if hasattr(handler, "flush") else None
         handler.close() if hasattr(handler, "close") else None
-
 
 if __name__ == "__main__":
     main()
