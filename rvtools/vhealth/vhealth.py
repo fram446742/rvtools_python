@@ -343,13 +343,15 @@ class VHealthCollector(BaseCollector):
 
         try:
             vms = self.view_cache.get_list([vim.VirtualMachine])
+            logger.debug(f"Building registered files from {len(vms)} VMs")
 
             for vm in vms:
                 try:
                     # Collect VM config file path
                     if vm.config and vm.config.files and vm.config.files.vmPathName:
-                        path = self._extract_datastore_path(vm.config.files.vmPathName)
-                        registered_files.add(path.lower())
+                        path = self._extract_datastore_path(vm.config.files.vmPathName).lower()
+                        registered_files.add(path)
+                        logger.debug(f"VM {vm.name}: registered config file {path}")
 
                     # Collect disk file paths
                     if vm.config and vm.config.hardware and vm.config.hardware.device:
@@ -357,11 +359,19 @@ class VHealthCollector(BaseCollector):
                             if isinstance(device, vim.vm.device.VirtualDisk):
                                 if (hasattr(device, "backing") and device.backing and 
                                     hasattr(device.backing, "fileName")):
-                                    path = self._extract_datastore_path(device.backing.fileName)
-                                    registered_files.add(path.lower())
+                                    path = self._extract_datastore_path(device.backing.fileName).lower()
+                                    registered_files.add(path)
+                                    
+                                    # Also add the -flat.vmdk variant if this is a vmdk
+                                    if path.endswith(".vmdk"):
+                                        flat_path = path.replace(".vmdk", "-flat.vmdk")
+                                        registered_files.add(flat_path)
+                                    logger.debug(f"VM {vm.name}: registered disk {path}")
 
                 except Exception as e:
                     logger.debug(f"Error collecting VM files for {vm.name}: {e}")
+
+            logger.debug(f"Total registered files: {len(registered_files)}")
 
         except Exception as e:
             logger.debug(f"Error building registered file set: {e}", exc_info=True)
@@ -378,8 +388,8 @@ class VHealthCollector(BaseCollector):
 
             spec = vim.host.DatastoreBrowser.SearchSpec()
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
-
-            logger.debug(f"Searching datastore {datastore.name} for orphaned files...")
+            
+            logger.debug(f"Searching datastore {datastore.name} for orphaned files... (registered files: {len(registered_files)})")
             # SearchDatastore_Task requires: datastore path (formatted as [name]) and spec
             datastore_path = f"[{datastore.name}]"
             
@@ -412,16 +422,19 @@ class VHealthCollector(BaseCollector):
                     break
 
             if str(task.info.state) == "success" and task.info.result:
-                warnings.extend(
-                    self._process_datastore_search_results(
-                        task.info.result, datastore.name, registered_files
-                    )
+                result_warnings = self._process_datastore_search_results(
+                    task.info.result, datastore.name, registered_files
                 )
+                logger.debug(f"Found {len(result_warnings)} orphaned files on {datastore.name}")
+                warnings.extend(result_warnings)
+            else:
+                logger.debug(f"No results from datastore search on {datastore.name}")
 
         except Exception as e:
             logger.debug(f"Error scanning datastore {datastore.name}: {e}", exc_info=True)
 
         return warnings
+
 
     def _process_datastore_search_results(self, search_results, datastore_name, registered_files):
         """Process files found in datastore search for orphaned entries"""
@@ -432,6 +445,7 @@ class VHealthCollector(BaseCollector):
                 return warnings
 
             vi_sdk_info = self._get_vi_sdk_info()
+            logger.debug(f"Processing {len(search_results.file)} files from datastore search")
 
             for file_entry in search_results.file:
                 try:
@@ -450,16 +464,20 @@ class VHealthCollector(BaseCollector):
                         file_path_backslash = file_path.replace("/", "\\")
                         is_registered = (file_path_backslash in registered_files)
                     
+                    logger.debug(f"File: {file_entry.path} - Registered: {is_registered}")
+                    
                     if not is_registered:
                         full_path = f"[{datastore_name}] {file_entry.path}"
                         
-                        # Determine message type based on file extension
+                        # Determine message based on file extension
                         if file_path.endswith(".vmdk"):
-                            msg = "Possible a zombie vmdk file! Please check."
+                            msg = "Possibly a Zombie vmdk file! Please check."
                         elif file_path.endswith(".vmx"):
-                            msg = "Possible a zombie vm! Please check."
+                            msg = "Possibly a Zombie VM! Please check."
+                        elif file_path.endswith(".vmtx"):
+                            msg = "Possibly a Zombie Template! Please check."
                         else:
-                            msg = "Possible an orphaned file! Please check."
+                            msg = "Possibly an orphaned file! Please check."
 
                         warning = {
                             "name": full_path,
@@ -469,6 +487,7 @@ class VHealthCollector(BaseCollector):
                             "vi_sdk_uuid": vi_sdk_info["uuid"],
                         }
                         warnings.append(warning)
+                        logger.debug(f"Added orphaned file: {full_path}")
 
                 except Exception as e:
                     logger.debug(f"Error processing file entry: {e}")
