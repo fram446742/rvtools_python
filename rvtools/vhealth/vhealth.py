@@ -2,10 +2,19 @@
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
+from rvtools.cache_utils import ViewCache
+import logging
+
+logger = logging.getLogger("rvtools")
 
 
 class VHealthCollector(BaseCollector):
-    """Collector for vHealth sheet - vCenter health and alarm messages"""
+    """Collector for vHealth sheet - vCenter health and alarm status"""
+
+    def __init__(self, service_instance, directory):
+        """Initialize with cache"""
+        super().__init__(service_instance, directory)
+        self.view_cache = ViewCache(self.content)
 
     @property
     def sheet_name(self):
@@ -16,34 +25,82 @@ class VHealthCollector(BaseCollector):
         health_list = []
 
         try:
+            # Get triggered/active alarms from alarm manager
             alarm_manager = self.content.alarmManager
             if alarm_manager:
-                alarms = alarm_manager.GetAlarm(self.content.rootFolder)
-                for alarm_def in alarms:
-                    health_data = self._collect_alarm(alarm_def)
-                    health_list.append(health_data)
+                # Get all triggered alarms (not just alarm definitions)
+                try:
+                    # GetTriggeredAlarms gives us active alarm states
+                    triggered_alarms = alarm_manager.GetTriggeredAlarms(entity=self.content.rootFolder)
+                    for triggered_alarm in triggered_alarms:
+                        health_data = self._collect_triggered_alarm(triggered_alarm)
+                        if health_data:
+                            health_list.append(health_data)
+                except Exception as e:
+                    logger.debug(f"Could not get triggered alarms: {e}")
+
+                # Fallback: Get alarm definitions and check their status
+                if not health_list:
+                    try:
+                        alarms = alarm_manager.GetAlarm(self.content.rootFolder)
+                        for alarm_def in alarms:
+                            health_data = self._collect_alarm(alarm_def)
+                            if health_data:
+                                health_list.append(health_data)
+                    except Exception as e:
+                        logger.debug(f"Could not get alarm definitions: {e}")
+
         except Exception as e:
-            print(f"Warning: Could not retrieve alarms: {e}")
+            logger.warning(f"Error collecting vHealth alarms: {e}")
 
         return health_list
 
+    def _collect_triggered_alarm(self, triggered_alarm):
+        """Collect information for a triggered alarm instance"""
+        try:
+            health_data = {}
+
+            # Get alarm definition
+            alarm = triggered_alarm.alarm
+            if not alarm:
+                return None
+
+            health_data["name"] = alarm.info.name or ""
+            health_data["message"] = alarm.info.description or ""
+
+            # Extract alarm type from alarm name or description
+            alarm_type = self._extract_alarm_type(alarm)
+            health_data["message_type"] = alarm_type
+
+            vi_sdk_info = self._get_vi_sdk_info()
+            health_data["vi_sdk_server"] = vi_sdk_info["server"]
+            health_data["vi_sdk_uuid"] = vi_sdk_info["uuid"]
+
+            return health_data
+        except Exception as e:
+            logger.debug(f"Error processing triggered alarm: {e}")
+            return None
+
     def _collect_alarm(self, alarm):
-        """Collect information for a single alarm"""
-        health_data = {}
+        """Collect information for a single alarm definition"""
+        try:
+            health_data = {}
 
-        health_data["name"] = alarm.info.name or ""
-        health_data["message"] = alarm.info.description or ""
+            health_data["name"] = alarm.info.name or ""
+            health_data["message"] = alarm.info.description or ""
 
-        # Extract alarm type from alarm name or description
-        alarm_type = self._extract_alarm_type(alarm)
+            # Extract alarm type from alarm name or description
+            alarm_type = self._extract_alarm_type(alarm)
+            health_data["message_type"] = alarm_type
 
-        health_data["message_type"] = alarm_type
+            vi_sdk_info = self._get_vi_sdk_info()
+            health_data["vi_sdk_server"] = vi_sdk_info["server"]
+            health_data["vi_sdk_uuid"] = vi_sdk_info["uuid"]
 
-        vi_sdk_info = self._get_vi_sdk_info()
-        health_data["vi_sdk_server"] = vi_sdk_info["server"]
-        health_data["vi_sdk_uuid"] = vi_sdk_info["uuid"]
-
-        return health_data
+            return health_data
+        except Exception as e:
+            logger.debug(f"Error processing alarm: {e}")
+            return None
 
     def _get_vi_sdk_info(self):
         """Extract VI SDK information"""
