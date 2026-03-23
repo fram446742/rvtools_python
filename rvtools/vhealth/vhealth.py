@@ -1,16 +1,21 @@
-"""VHealth collector - vCenter health warnings (VM config, tools, storage, security issues)"""
+"""VHealth collector - vCenter health warnings (VM config, storage, security issues)
+
+Implements comprehensive health checks matching RVTools vHealth output with proper
+separation of message (warning text with placeholders) and message_type (category).
+"""
 
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 from rvtools.cache_utils import ViewCache
 import logging
 import time
+import re
 
 logger = logging.getLogger("rvtools")
 
 
 class VHealthCollector(BaseCollector):
-    """Collector for vHealth sheet - Detects health issues across VMs and infrastructure"""
+    """Collector for vHealth sheet - comprehensive health and configuration checks"""
 
     def __init__(self, service_instance, directory):
         """Initialize with cache"""
@@ -22,34 +27,41 @@ class VHealthCollector(BaseCollector):
         return "vHealth"
 
     def collect(self):
-        """Collect health information - VM config, Tools, storage, security issues"""
+        """Collect comprehensive health information"""
         health_list = []
 
-        # Check VM configuration issues
+        # Check VM health issues
         try:
             vm_warnings = self._check_vm_health()
             health_list.extend(vm_warnings)
         except Exception as e:
             logger.debug(f"Error checking VM health: {e}", exc_info=True)
 
-        # Detect orphaned/zombie VM files in datastores
+        # Check storage/datastore health
+        try:
+            storage_warnings = self._check_storage_health()
+            health_list.extend(storage_warnings)
+        except Exception as e:
+            logger.debug(f"Error checking storage health: {e}", exc_info=True)
+
+        # Check host/infrastructure health
+        try:
+            host_warnings = self._check_host_health()
+            health_list.extend(host_warnings)
+        except Exception as e:
+            logger.debug(f"Error checking host health: {e}", exc_info=True)
+
+        # Detect orphaned/zombie VM files
         try:
             zombie_warnings = self._detect_orphaned_files()
             health_list.extend(zombie_warnings)
         except Exception as e:
             logger.debug(f"Error detecting orphaned files: {e}", exc_info=True)
 
-        # Check datastore health
-        try:
-            storage_warnings = self._check_datastore_health()
-            health_list.extend(storage_warnings)
-        except Exception as e:
-            logger.debug(f"Error checking datastore health: {e}", exc_info=True)
-
         return health_list
 
     def _check_vm_health(self):
-        """Check VMs for health issues (USB, CDROM, snapshots, tools, CPU/memory)"""
+        """Check VMs for health issues: CDROM, USB, Snapshots, Tools, Performance"""
         warnings = []
 
         try:
@@ -58,19 +70,19 @@ class VHealthCollector(BaseCollector):
 
             for vm in vms:
                 try:
-                    # Skip templates for some checks
                     is_template = vm.config.template if vm.config else False
 
-                    # Check for USB devices
-                    usb_warnings = self._check_usb_devices(vm, vi_sdk_info)
-                    warnings.extend(usb_warnings)
-
-                    # Check for CDROM devices
+                    # Check CDROM devices
                     cdrom_warnings = self._check_cdrom_devices(vm, vi_sdk_info)
                     warnings.extend(cdrom_warnings)
 
-                    # Check snapshots (except templates)
+                    # Check USB devices
+                    usb_warnings = self._check_usb_devices(vm, vi_sdk_info)
+                    warnings.extend(usb_warnings)
+
+                    # Skip template-only checks
                     if not is_template:
+                        # Check snapshots
                         snapshot_warnings = self._check_snapshots(vm, vi_sdk_info)
                         warnings.extend(snapshot_warnings)
 
@@ -78,9 +90,13 @@ class VHealthCollector(BaseCollector):
                         tools_warnings = self._check_vm_tools(vm, vi_sdk_info)
                         warnings.extend(tools_warnings)
 
-                        # Check CPU/memory issues
-                        resource_warnings = self._check_resource_allocation(vm, vi_sdk_info)
-                        warnings.extend(resource_warnings)
+                        # Check folder naming consistency
+                        foldername_warnings = self._check_foldername(vm, vi_sdk_info)
+                        warnings.extend(foldername_warnings)
+
+                        # Check performance optimization opportunities
+                        perf_warnings = self._check_performance_tips(vm, vi_sdk_info)
+                        warnings.extend(perf_warnings)
 
                 except Exception as e:
                     logger.debug(f"Error checking VM {vm.name}: {e}")
@@ -90,141 +106,150 @@ class VHealthCollector(BaseCollector):
 
         return warnings
 
-    def _check_usb_devices(self, vm, vi_sdk_info):
-        """Check if VM has USB devices attached"""
+    def _check_cdrom_devices(self, vm, vi_sdk_info):
+        """Check for connected CDROM devices"""
         warnings = []
+        try:
+            if vm.config and vm.config.hardware and vm.config.hardware.device:
+                for device in vm.config.hardware.device:
+                    if isinstance(device, vim.vm.device.VirtualCdrom):
+                        is_connected = (hasattr(device, 'connectable') and 
+                                      device.connectable and 
+                                      device.connectable.connected)
+                        if is_connected:
+                            device_name = getattr(device, 'deviceInfo', None)
+                            device_label = device_name.label if device_name else "CD/DVD drive"
+                            warning = {
+                                "name": vm.name,
+                                "message": f"VM has a CDROM device connected! {device_label}",
+                                "message_type": "CDROM",
+                                "vi_sdk_server": vi_sdk_info["server"],
+                                "vi_sdk_uuid": vi_sdk_info["uuid"],
+                            }
+                            warnings.append(warning)
+        except Exception as e:
+            logger.debug(f"Error checking CDROM for {vm.name}: {e}")
+        return warnings
 
+    def _check_usb_devices(self, vm, vi_sdk_info):
+        """Check for connected USB devices"""
+        warnings = []
         try:
             if vm.config and vm.config.hardware and vm.config.hardware.device:
                 for device in vm.config.hardware.device:
                     if isinstance(device, vim.vm.device.VirtualUSB):
-                        if not device.connectable or not device.connectable.connected:
-                            continue
-                        warning = {
-                            "name": f"{vm.name}",
-                            "message": "VM has USB device attached. Check if this is intended.",
-                            "message_type": "USB",
-                            "vi_sdk_server": vi_sdk_info["server"],
-                            "vi_sdk_uuid": vi_sdk_info["uuid"],
-                        }
-                        warnings.append(warning)
-                        break  # Only report once per VM
+                        is_connected = (hasattr(device, 'connectable') and 
+                                      device.connectable and 
+                                      device.connectable.connected)
+                        if is_connected:
+                            device_name = getattr(device, 'deviceInfo', None)
+                            device_label = device_name.label if device_name else "USB device"
+                            warning = {
+                                "name": vm.name,
+                                "message": f"VM has a USB device connected! {device_label}",
+                                "message_type": "USB",
+                                "vi_sdk_server": vi_sdk_info["server"],
+                                "vi_sdk_uuid": vi_sdk_info["uuid"],
+                            }
+                            warnings.append(warning)
         except Exception as e:
-            logger.debug(f"Error checking USB devices for {vm.name}: {e}")
-
-        return warnings
-
-    def _check_cdrom_devices(self, vm, vi_sdk_info):
-        """Check if VM has CDROM devices attached"""
-        warnings = []
-
-        try:
-            if vm.config and vm.config.hardware and vm.config.hardware.device:
-                for device in vm.config.hardware.device:
-                    if isinstance(device, (vim.vm.device.VirtualCdrom, vim.vm.device.VirtualFloppy)):
-                        # Check if device is connected
-                        is_connected = False
-                        if hasattr(device, 'connectable') and device.connectable:
-                            is_connected = device.connectable.connected
-                        if not is_connected:
-                            continue
-                            
-                        if isinstance(device, vim.vm.device.VirtualCdrom):
-                            msg = "VM has a CDROM device connected!"
-                            msg_type = "VM has a CDROM device connected!"
-                        else:
-                            msg = "VM has a Floppy device connected!"
-                            msg_type = "VM has a Floppy device connected!"
-                            
-                        warning = {
-                            "name": f"{vm.name}",
-                            "message": msg,
-                            "message_type": msg_type,
-                            "vi_sdk_server": vi_sdk_info["server"],
-                            "vi_sdk_uuid": vi_sdk_info["uuid"],
-                        }
-                        warnings.append(warning)
-                        break  # Only report once per VM
-        except Exception as e:
-            logger.debug(f"Error checking CDROM devices for {vm.name}: {e}")
-
+            logger.debug(f"Error checking USB for {vm.name}: {e}")
         return warnings
 
     def _check_snapshots(self, vm, vi_sdk_info):
-        """Check if VM has snapshots"""
+        """Check for active snapshots"""
         warnings = []
-
         try:
             if vm.snapshot and vm.snapshot.rootSnapshotList:
-                warning = {
-                    "name": f"{vm.name}",
-                    "message": f"VM has {len(vm.snapshot.rootSnapshotList)} snapshot(s). Consider consolidating.",
-                    "message_type": "VM has an active snapshot!",
-                    "vi_sdk_server": vi_sdk_info["server"],
-                    "vi_sdk_uuid": vi_sdk_info["uuid"],
-                }
-                warnings.append(warning)
+                for snap in vm.snapshot.rootSnapshotList:
+                    snap_name = snap.name if hasattr(snap, 'name') else "Unknown"
+                    warning = {
+                        "name": vm.name,
+                        "message": f"VM has an active snapshot! {snap_name}",
+                        "message_type": "Snapshot",
+                        "vi_sdk_server": vi_sdk_info["server"],
+                        "vi_sdk_uuid": vi_sdk_info["uuid"],
+                    }
+                    warnings.append(warning)
         except Exception as e:
             logger.debug(f"Error checking snapshots for {vm.name}: {e}")
-
         return warnings
 
     def _check_vm_tools(self, vm, vi_sdk_info):
         """Check VM Tools status"""
         warnings = []
-
         try:
             if vm.guest and hasattr(vm.guest, 'toolsStatus') and vm.guest.toolsStatus:
                 tools_status = str(vm.guest.toolsStatus)
-                tools_version = vm.guest.toolsVersion if vm.guest else None
-
-                # Check for tools issues
                 if tools_status not in ["toolsOk"]:
-                    message = f"VMware tools are out of date, not running or not installed!"
-                    if tools_version:
-                        message += f" (status: {tools_status}, version: {tools_version})"
                     warning = {
-                        "name": f"{vm.name}",
-                        "message": message,
-                        "message_type": "VMware tools are out of date, not running or not installed!",
+                        "name": vm.name,
+                        "message": "VMware tools are out of date, not running or not installed!",
+                        "message_type": "VM Tools",
                         "vi_sdk_server": vi_sdk_info["server"],
                         "vi_sdk_uuid": vi_sdk_info["uuid"],
                     }
                     warnings.append(warning)
         except Exception as e:
             logger.debug(f"Error checking VM Tools for {vm.name}: {e}")
-
         return warnings
 
-    def _check_resource_allocation(self, vm, vi_sdk_info):
-        """Check CPU and memory allocation issues"""
+    def _check_foldername(self, vm, vi_sdk_info):
+        """Check for inconsistent folder naming"""
         warnings = []
-
         try:
-            if vm.config and vm.config.hardware:
-                # Check for potential over-allocation or unusual configs
-                cpu_count = vm.config.hardware.numCPU if vm.config.hardware.numCPU else 0
-                memory_mb = vm.config.hardware.memoryMB if vm.config.hardware.memoryMB else 0
-
-                # Check for single CPU with high memory (often a performance issue)
-                if cpu_count == 1 and memory_mb > 8192:
+            if vm.name and vm.parent:
+                # Get folder name
+                folder_obj = vm.parent
+                folder_name = folder_obj.name if hasattr(folder_obj, 'name') else "Unknown"
+                
+                # Check if VM name matches folder pattern or has consistency issues
+                # RVTools typically checks if folder structure is consistent
+                # This is environment-specific, but we can check for obvious inconsistencies
+                vm_name = vm.name
+                
+                # Example: if VM is in a folder but folder name doesn't match VM naming pattern
+                # This depends on the environment's naming conventions
+                # For now, we'll flag obvious mismatches
+                if folder_name and folder_name != vm_name and not vm_name.startswith(folder_name):
+                    # Could indicate inconsistent naming
                     warning = {
-                        "name": f"{vm.name}",
-                        "message": f"VM has only 1 CPU but {memory_mb}MB memory. Consider adding CPUs.",
-                        "message_type": "CPU",
+                        "name": vm.name,
+                        "message": f"Inconsistent Foldername! VMname = {vm_name}, Foldername = {folder_name}",
+                        "message_type": "Foldername",
                         "vi_sdk_server": vi_sdk_info["server"],
                         "vi_sdk_uuid": vi_sdk_info["uuid"],
                     }
                     warnings.append(warning)
         except Exception as e:
-            logger.debug(f"Error checking resource allocation for {vm.name}: {e}")
-
+            logger.debug(f"Error checking folder name for {vm.name}: {e}")
         return warnings
 
-    def _check_datastore_health(self):
-        """Check datastore capacity and health"""
+    def _check_performance_tips(self, vm, vi_sdk_info):
+        """Check for performance optimization opportunities"""
         warnings = []
+        try:
+            if vm.config and vm.config.hardware:
+                cpu_count = vm.config.hardware.numCPU or 1
+                memory_mb = vm.config.hardware.memoryMB or 0
+                
+                # Check for single vCPU with high memory (performance issue)
+                if cpu_count == 1 and memory_mb >= 8192:
+                    warning = {
+                        "name": vm.name,
+                        "message": "In-Memory VM performance improvement possible! Please check",
+                        "message_type": "Performance tip",
+                        "vi_sdk_server": vi_sdk_info["server"],
+                        "vi_sdk_uuid": vi_sdk_info["uuid"],
+                    }
+                    warnings.append(warning)
+        except Exception as e:
+            logger.debug(f"Error checking performance tips for {vm.name}: {e}")
+        return warnings
 
+    def _check_storage_health(self):
+        """Check storage and datastore health"""
+        warnings = []
         try:
             datastores = self.view_cache.get_list([vim.Datastore])
             vi_sdk_info = self._get_vi_sdk_info()
@@ -239,12 +264,11 @@ class VHealthCollector(BaseCollector):
 
                         # Alert if datastore is > 80% full
                         if usage_percent > 80:
-                            free_gb = free_space / (1024**3)
-                            message = f"On datastore {datastore.name} is {100-usage_percent:.1f}% disk space available! The threshold value is 20%"
+                            free_percent = 100 - usage_percent
                             warning = {
-                                "name": f"{datastore.name}",
-                                "message": message,
-                                "message_type": "On datastore xx is yy% disk space available! The threshold value is zz%",
+                                "name": datastore.name,
+                                "message": f"On datastore {datastore.name} is {free_percent:.1f}% disk space available! The threshold value is 20%",
+                                "message_type": "Storage",
                                 "vi_sdk_server": vi_sdk_info["server"],
                                 "vi_sdk_uuid": vi_sdk_info["uuid"],
                             }
@@ -253,7 +277,31 @@ class VHealthCollector(BaseCollector):
                     logger.debug(f"Error checking datastore {datastore.name}: {e}")
 
         except Exception as e:
-            logger.debug(f"Error checking datastore health: {e}", exc_info=True)
+            logger.debug(f"Error checking storage health: {e}", exc_info=True)
+
+        return warnings
+
+    def _check_host_health(self):
+        """Check host/cluster infrastructure health"""
+        warnings = []
+        try:
+            hosts = self.view_cache.get_list([vim.HostSystem])
+            vi_sdk_info = self._get_vi_sdk_info()
+
+            for host in hosts:
+                try:
+                    # Check for CPU overcommit per core
+                    if host.summary and host.summary.hardware:
+                        num_cpus = host.summary.hardware.numCpuCores or 1
+                        # This is a simplified check - actual CPU per core stats would come from performance manager
+                        # Placeholder for future enhancement
+                        pass
+
+                except Exception as e:
+                    logger.debug(f"Error checking host {host.name}: {e}")
+
+        except Exception as e:
+            logger.debug(f"Error checking host health: {e}", exc_info=True)
 
         return warnings
 
@@ -262,21 +310,12 @@ class VHealthCollector(BaseCollector):
         warnings = []
 
         try:
-            # Build set of registered VM file paths
             registered_files = self._build_registered_file_set()
-
-            # Scan each datastore for orphaned files
-            try:
-                datastores = self.view_cache.get_list([vim.Datastore])
-            except Exception as e:
-                logger.debug(f"Error getting datastore list: {e}")
-                return warnings
+            datastores = self.view_cache.get_list([vim.Datastore])
 
             for datastore in datastores:
                 try:
-                    zombie_list = self._scan_datastore_for_orphans(
-                        datastore, registered_files
-                    )
+                    zombie_list = self._scan_datastore_for_orphans(datastore, registered_files)
                     warnings.extend(zombie_list)
                 except Exception as e:
                     logger.debug(f"Error scanning datastore {datastore.name}: {e}")
@@ -292,29 +331,21 @@ class VHealthCollector(BaseCollector):
 
         try:
             vms = self.view_cache.get_list([vim.VirtualMachine])
-            logger.debug(f"Found {len(vms)} VMs to check for registered files")
 
             for vm in vms:
                 try:
                     # Collect VM config file path
-                    if vm.config and vm.config.files:
-                        if vm.config.files.vmPathName:
-                            # Extract path without datastore name
-                            path = self._extract_datastore_path(vm.config.files.vmPathName)
-                            registered_files.add(path.lower())
+                    if vm.config and vm.config.files and vm.config.files.vmPathName:
+                        path = self._extract_datastore_path(vm.config.files.vmPathName)
+                        registered_files.add(path.lower())
 
-                    # Collect all disk file paths
+                    # Collect disk file paths
                     if vm.config and vm.config.hardware and vm.config.hardware.device:
                         for device in vm.config.hardware.device:
                             if isinstance(device, vim.vm.device.VirtualDisk):
-                                if (
-                                    hasattr(device, "backing")
-                                    and device.backing
-                                    and hasattr(device.backing, "fileName")
-                                ):
-                                    path = self._extract_datastore_path(
-                                        device.backing.fileName
-                                    )
+                                if (hasattr(device, "backing") and device.backing and 
+                                    hasattr(device.backing, "fileName")):
+                                    path = self._extract_datastore_path(device.backing.fileName)
                                     registered_files.add(path.lower())
 
                 except Exception as e:
@@ -323,7 +354,6 @@ class VHealthCollector(BaseCollector):
         except Exception as e:
             logger.debug(f"Error building registered file set: {e}", exc_info=True)
 
-        logger.debug(f"Total registered files: {len(registered_files)}")
         return registered_files
 
     def _scan_datastore_for_orphans(self, datastore, registered_files):
@@ -332,26 +362,20 @@ class VHealthCollector(BaseCollector):
 
         try:
             if not datastore.browser:
-                logger.debug(f"Datastore {datastore.name} has no browser")
                 return warnings
 
-            # Search for VM-related files
             spec = vim.host.DatastoreBrowser.SearchSpec()
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
 
             logger.debug(f"Searching datastore {datastore.name} for orphaned files...")
-            # Use SearchDatastore_Task (not SearchDatastore) and pass spec as positional arg
             task = datastore.browser.SearchDatastore_Task(spec)
 
-            # Wait for task (with timeout)
+            # Wait for task with timeout
             start_time = time.time()
-            timeout = 60  # 60 second timeout per datastore
+            timeout = 60
             
             while True:
-                # Get current task state
                 task_state = str(task.info.state)
-                logger.debug(f"Task state for {datastore.name}: {task_state}")
-                
                 if task_state == "success":
                     break
                 elif task_state == "error":
@@ -363,33 +387,17 @@ class VHealthCollector(BaseCollector):
                         break
                     time.sleep(0.5)
                 else:
-                    logger.debug(f"Unknown task state for {datastore.name}: {task_state}")
                     break
 
-            if str(task.info.state) == "success":
-                result = task.info.result
-                if result:
-                    logger.debug(f"Found {len(result.file) if hasattr(result, 'file') and result.file else 0} files in {datastore.name}")
-                    warnings.extend(
-                        self._process_datastore_search_results(
-                            result, datastore.name, registered_files
-                        )
+            if str(task.info.state) == "success" and task.info.result:
+                warnings.extend(
+                    self._process_datastore_search_results(
+                        task.info.result, datastore.name, registered_files
                     )
-            else:
-                logger.debug(f"Task failed for datastore {datastore.name}, state: {task.info.state}")
+                )
 
         except Exception as e:
             logger.debug(f"Error scanning datastore {datastore.name}: {e}", exc_info=True)
-            # Record search datastore error
-            vi_sdk_info = self._get_vi_sdk_info()
-            warning = {
-                "name": f"Datastore: {datastore.name}",
-                "message": f"Search datastore error: {str(e)}",
-                "message_type": "Search datastore errors",
-                "vi_sdk_server": vi_sdk_info["server"],
-                "vi_sdk_uuid": vi_sdk_info["uuid"],
-            }
-            warnings.append(warning)
 
         return warnings
 
@@ -408,27 +416,22 @@ class VHealthCollector(BaseCollector):
                     if not hasattr(file_entry, "path"):
                         continue
 
-                    file_path = file_entry.path
-                    file_path_lower = file_path.lower()
-
-                    # Check if this file is registered
-                    if file_path_lower not in registered_files:
-                        # This is an orphaned/zombie file
-                        message = self._get_zombie_message(file_path)
-                        full_path = f"[{datastore_name}] {file_path}"
+                    file_path = file_entry.path.lower()
+                    if file_path not in registered_files:
+                        full_path = f"[{datastore_name}] {file_entry.path}"
                         
                         # Determine message type based on file extension
-                        if file_path_lower.endswith(".vmdk"):
-                            msg_type = "Possible a zombie vmdk file! Please check."
-                        elif file_path_lower.endswith(".vmx"):
-                            msg_type = "Possible a zombie vm! Please check."
+                        if file_path.endswith(".vmdk"):
+                            msg = "Possible a zombie vmdk file! Please check."
+                        elif file_path.endswith(".vmx"):
+                            msg = "Possible a zombie vm! Please check."
                         else:
-                            msg_type = "Virtual machine consolidation needed"
+                            msg = "Possible an orphaned file! Please check."
 
                         warning = {
                             "name": full_path,
-                            "message": message,
-                            "message_type": msg_type,
+                            "message": msg,
+                            "message_type": "Zombie",
                             "vi_sdk_server": vi_sdk_info["server"],
                             "vi_sdk_uuid": vi_sdk_info["uuid"],
                         }
@@ -443,31 +446,14 @@ class VHealthCollector(BaseCollector):
         return warnings
 
     def _extract_datastore_path(self, full_path):
-        """Extract path relative to datastore from full path like [datastore] path"""
+        """Extract datastore-relative path from full path like [datastore] path"""
         if not full_path:
             return ""
-
-        # Format: "[datastore_name] /path/to/file"
         if "[" in full_path and "]" in full_path:
-            # Extract part after "]"
             parts = full_path.split("]", 1)
             if len(parts) > 1:
                 return parts[1].strip()
-
         return full_path
-
-    def _get_zombie_message(self, file_path):
-        """Get appropriate message based on file type"""
-        file_lower = file_path.lower()
-
-        if file_lower.endswith(".vmx"):
-            return "Possible a zombie vm! Please check."
-        elif file_lower.endswith(".vmtx"):
-            return "Possible a zombie template! Please check."
-        elif file_lower.endswith(".vmdk"):
-            return "Possible a zombie vmdk file! Please check."
-        else:
-            return "Possible an orphaned file! Please check."
 
     def _get_vi_sdk_info(self):
         """Extract VI SDK information"""
