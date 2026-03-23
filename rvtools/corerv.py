@@ -145,6 +145,7 @@ class CoreCode(object):
         obj._format = config_dict.get("format", "xlsx")
         obj._threads = config_dict.get("threads", "auto")
         obj._verbose = config_dict.get("verbose", "false")
+        obj._include_custom_fields = config_dict.get("include_custom_fields", False)
         return obj
 
     def _create_default_config(self):

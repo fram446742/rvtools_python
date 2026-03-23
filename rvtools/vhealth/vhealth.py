@@ -68,6 +68,7 @@ class VHealthCollector(BaseCollector):
 
         try:
             vms = self.view_cache.get_list([vim.VirtualMachine])
+            logger.debug(f"Found {len(vms)} VMs to check for registered files")
 
             for vm in vms:
                 try:
@@ -77,6 +78,7 @@ class VHealthCollector(BaseCollector):
                             # Extract path without datastore name
                             path = self._extract_datastore_path(vm.config.files.vmPathName)
                             registered_files.add(path.lower())
+                            logger.debug(f"VM {vm.name}: registered {path}")
 
                     # Collect all disk file paths
                     if vm.config and vm.config.hardware and vm.config.hardware.device:
@@ -96,8 +98,9 @@ class VHealthCollector(BaseCollector):
                     logger.debug(f"Error collecting VM files for {vm.name}: {e}")
 
         except Exception as e:
-            logger.debug(f"Error building registered file set: {e}")
+            logger.debug(f"Error building registered file set: {e}", exc_info=True)
 
+        logger.debug(f"Total registered files: {len(registered_files)}")
         return registered_files
 
     def _scan_datastore_for_orphans(self, datastore, registered_files):
@@ -106,12 +109,14 @@ class VHealthCollector(BaseCollector):
 
         try:
             if not datastore.browser:
+                logger.debug(f"Datastore {datastore.name} has no browser")
                 return warnings
 
             # Search for VM-related files
             spec = vim.host.DatastoreBrowser.SearchSpec()
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
 
+            logger.debug(f"Searching datastore {datastore.name} for orphaned files...")
             task = datastore.browser.SearchDatastore(spec=spec)
 
             # Wait for task (with timeout)
@@ -119,22 +124,40 @@ class VHealthCollector(BaseCollector):
 
             start_time = time.time()
             timeout = 60  # 60 second timeout per datastore
-            while task.info.state in [vim.TaskInfo.State.running, vim.TaskInfo.State.queued]:
-                if time.time() - start_time > timeout:
-                    logger.debug(f"Datastore scan timeout for {datastore.name}")
+            
+            while True:
+                # Get current task state
+                task_state = str(task.info.state)
+                logger.debug(f"Task state for {datastore.name}: {task_state}")
+                
+                if task_state == "success":
                     break
-                time.sleep(0.5)
+                elif task_state == "error":
+                    logger.debug(f"Task error for {datastore.name}: {task.info.error}")
+                    break
+                elif task_state in ["running", "queued"]:
+                    if time.time() - start_time > timeout:
+                        logger.debug(f"Datastore scan timeout for {datastore.name}")
+                        break
+                    time.sleep(0.5)
+                else:
+                    logger.debug(f"Unknown task state for {datastore.name}: {task_state}")
+                    break
 
-            if task.info.state == vim.TaskInfo.State.success:
+            if str(task.info.state) == "success":
                 result = task.info.result
-                warnings.extend(
-                    self._process_datastore_search_results(
-                        result, datastore.name, registered_files
+                if result:
+                    logger.debug(f"Found {len(result.file) if hasattr(result, 'file') and result.file else 0} files in {datastore.name}")
+                    warnings.extend(
+                        self._process_datastore_search_results(
+                            result, datastore.name, registered_files
+                        )
                     )
-                )
+            else:
+                logger.debug(f"Task failed for datastore {datastore.name}, state: {task.info.state}")
 
         except Exception as e:
-            logger.debug(f"Error scanning datastore {datastore.name}: {e}")
+            logger.debug(f"Error scanning datastore {datastore.name}: {e}", exc_info=True)
 
         return warnings
 

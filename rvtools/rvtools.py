@@ -200,9 +200,14 @@ def connect_to_vcenter(server, username, password, ssl_context):
 
 
 def process_single_vcenter(
-    server, username, password, directory, export_format, max_workers, sheets_filter
+    server, username, password, directory, export_format, max_workers, sheets_filter, include_custom_fields=False
 ):
     """Process data collection and export for a single vCenter"""
+    from rvtools.collectors.base_collector import set_include_custom_fields
+    
+    # Set the custom fields flag for this vCenter
+    set_include_custom_fields(include_custom_fields)
+    
     ssl_context = ssl._create_unverified_context()
 
     logger.info(f"Connecting to vCenter: {server}")
@@ -374,6 +379,7 @@ def main():
                     "directory": conn._directory,
                     "format": conn._format,
                     "threads": conn._threads,
+                    "include_custom_fields": conn._include_custom_fields,
                     "_section_name": "default",
                 }
             ]
@@ -414,6 +420,7 @@ def main():
                 export_format=export_format,
                 max_workers=max_workers,
                 sheets_filter=sheets_filter,
+                include_custom_fields=config.get("include_custom_fields", args.include_custom_fields),
             )
 
             if success:
