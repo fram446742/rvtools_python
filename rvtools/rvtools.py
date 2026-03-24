@@ -135,6 +135,14 @@ def get_args():
         help="Allow terminal parameters to override config file values",
     )
 
+    parser.add_argument(
+        "--test-script",
+        required=False,
+        action="store_true",
+        default=False,
+        help="Use alternative zombie detection logic (vm.Layout.Disk instead of vm.config.hardware.device) for testing",
+    )
+
     return parser.parse_args()
 
 
@@ -211,13 +219,19 @@ def connect_to_vcenter(server, username, password, ssl_context):
 
 
 def process_single_vcenter(
-    server, username, password, directory, export_format, max_workers, sheets_filter, include_custom_fields=False
+    server, username, password, directory, export_format, max_workers, sheets_filter, include_custom_fields=False, test_script=False
 ):
     """Process data collection and export for a single vCenter"""
     from rvtools.collectors.base_collector import set_include_custom_fields
+    from rvtools.vhealth.vhealth import set_test_script_mode
     
     # Set the custom fields flag for this vCenter
     set_include_custom_fields(include_custom_fields)
+    
+    # Set test script mode if enabled
+    if test_script:
+        set_test_script_mode(True)
+        logger.info("Test script mode enabled: using vm.Layout.Disk for zombie detection")
     
     ssl_context = ssl._create_unverified_context()
 
@@ -360,8 +374,11 @@ def main():
     cli_sheets = args.sheets
     cli_verbose = args.verbose
     cli_include_custom_fields = args.include_custom_fields
+    test_script = args.test_script
 
     # Get configuration
+    # Load config file if needed (when any required field is missing)
+    config_from_file = None
     if (
         args.host is None
         or args.username is None
@@ -379,7 +396,7 @@ def main():
             logger.info(
                 f"Found {len(multi_configs)} vCenter configuration(s): {', '.join(c.get('_section_name', 'unknown') for c in multi_configs)}"
             )
-            configs_to_process = multi_configs
+            config_from_file = multi_configs
         else:
             # Fallback to single config
             conn = obj.read_conf_file(args.config)
@@ -392,7 +409,7 @@ def main():
                 )
                 sys.exit(1)
 
-            configs_to_process = [
+            config_from_file = [
                 {
                     "vcenter": conn._vcenter,
                     "username": conn._username,
@@ -406,8 +423,38 @@ def main():
                     "_section_name": "default",
                 }
             ]
+
+    # Build configs_to_process with proper override handling
+    configs_to_process = []
+    
+    if config_from_file:
+        # We have config from file
+        for config in config_from_file:
+            # Apply CLI overrides if enabled
+            if override:
+                # Override mode: CLI values replace config values
+                if args.host is not None:
+                    config["vcenter"] = args.host
+                if args.username is not None:
+                    config["username"] = args.username
+                if args.password is not None:
+                    config["password"] = args.password
+                if args.directory is not None:
+                    config["directory"] = args.directory
+            else:
+                # Normal mode: CLI values only fill in missing required fields
+                if args.host is not None and config.get("vcenter") is None:
+                    config["vcenter"] = args.host
+                if args.username is not None and config.get("username") is None:
+                    config["username"] = args.username
+                if args.password is not None and config.get("password") is None:
+                    config["password"] = args.password
+                if args.directory is not None and config.get("directory") is None:
+                    config["directory"] = args.directory
+            
+            configs_to_process.append(config)
     else:
-        # CLI arguments provided
+        # CLI arguments provided and no config needed
         configs_to_process = [
             {
                 "vcenter": args.host,
@@ -494,6 +541,7 @@ def main():
                 max_workers=max_workers,
                 sheets_filter=sheets_filter,
                 include_custom_fields=include_custom_fields,
+                test_script=test_script,
             )
 
             if success:

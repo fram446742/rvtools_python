@@ -13,6 +13,20 @@ import re
 
 logger = logging.getLogger("rvtools")
 
+# Global flag for test script mode
+_test_script_mode = False
+
+
+def set_test_script_mode(enabled):
+    """Enable/disable test script mode for zombie detection"""
+    global _test_script_mode
+    _test_script_mode = enabled
+
+
+def get_test_script_mode():
+    """Check if test script mode is enabled"""
+    return _test_script_mode
+
 
 class VHealthCollector(BaseCollector):
     """Collector for vHealth sheet - comprehensive health and configuration checks"""
@@ -346,12 +360,19 @@ class VHealthCollector(BaseCollector):
         return warnings
 
     def _build_registered_file_set(self):
-        """Build set of all registered VM file paths including snapshots"""
+        """Build set of all registered VM file paths including snapshots
+        
+        In test script mode, uses vm.Layout.Disk (runtime layout) instead of 
+        vm.config.hardware.device (configuration) for potentially better accuracy.
+        """
         registered_files = set()
+        use_layout = get_test_script_mode()
 
         try:
             vms = self.view_cache.get_list([vim.VirtualMachine])
             logger.debug(f"Building registered files from {len(vms)} VMs")
+            if use_layout:
+                logger.debug(f"[TEST-SCRIPT] Using vm.Layout.Disk (runtime) instead of vm.config.hardware.device")
 
             for vm in vms:
                 try:
@@ -361,15 +382,24 @@ class VHealthCollector(BaseCollector):
                         registered_files.add(path)
                         logger.debug(f"VM {vm.name}: registered config file {path}")
 
-                    # Collect disk file paths
-                    if vm.config and vm.config.hardware and vm.config.hardware.device:
-                        for device in vm.config.hardware.device:
-                            if isinstance(device, vim.vm.device.VirtualDisk):
-                                if (hasattr(device, "backing") and device.backing and 
-                                    hasattr(device.backing, "fileName")):
-                                    path = self._extract_datastore_path(device.backing.fileName).lower()
-                                    registered_files.add(path)
-                                    logger.debug(f"VM {vm.name}: registered disk {path}")
+                    # Collect disk file paths - use vm.Layout if in test script mode
+                    if use_layout:
+                        # Test script mode: use vm.Layout.Disk (runtime layout)
+                        if hasattr(vm, 'layout') and vm.layout and hasattr(vm.layout, 'disk'):
+                            try:
+                                for disk in vm.layout.disk:
+                                    if hasattr(disk, 'diskFile'):
+                                        for disk_file in disk.diskFile:
+                                            path = self._extract_datastore_path(disk_file).lower()
+                                            registered_files.add(path)
+                                            logger.debug(f"VM {vm.name}: layout disk {path}")
+                            except Exception as e:
+                                logger.debug(f"Error collecting vm.Layout.Disk for {vm.name}: {e}")
+                                # Fall back to config-based collection
+                                self._collect_config_disks(vm, registered_files)
+                    else:
+                        # Normal mode: use vm.config.hardware.device
+                        self._collect_config_disks(vm, registered_files)
                     
                     # Collect snapshot disk files
                     if vm.snapshot and vm.snapshot.rootSnapshotList:
@@ -384,6 +414,20 @@ class VHealthCollector(BaseCollector):
             logger.debug(f"Error building registered file set: {e}", exc_info=True)
 
         return registered_files
+
+    def _collect_config_disks(self, vm, registered_files):
+        """Helper method to collect VM disk files from configuration"""
+        try:
+            if vm.config and vm.config.hardware and vm.config.hardware.device:
+                for device in vm.config.hardware.device:
+                    if isinstance(device, vim.vm.device.VirtualDisk):
+                        if (hasattr(device, "backing") and device.backing and 
+                            hasattr(device.backing, "fileName")):
+                            path = self._extract_datastore_path(device.backing.fileName).lower()
+                            registered_files.add(path)
+                            logger.debug(f"VM {vm.name}: registered disk {path}")
+        except Exception as e:
+            logger.debug(f"Error collecting config disks for {vm.name}: {e}")
 
     def _scan_datastore_for_orphans(self, datastore, registered_files):
         """Scan a single datastore for orphaned VM files - searches all directories"""
