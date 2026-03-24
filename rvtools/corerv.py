@@ -15,12 +15,16 @@ logger = logging.getLogger("rvtools")
 class CoreCode(object):
     """Main Class *CoreCode* responsible for read the conf file feature"""
 
-    def read_conf_file(self, config_path=None):
+    def read_conf_file(self, config_path=None, optional_fields=None):
         """Read single vCenter config from TOML file (legacy support)
 
         Args:
             config_path: Path to config file. If None, uses ~/.rvtools.toml
+            optional_fields: List of fields that can be missing (will be filled by CLI args)
         """
+        if optional_fields is None:
+            optional_fields = []
+            
         if config_path is None:
             home_area = os.path.expanduser("~")
             toml_path = os.path.join(home_area, ".rvtools.toml")
@@ -45,12 +49,14 @@ class CoreCode(object):
                     return None
                 section = sections[0]
 
-            # Validate required fields
-            if not all(
-                k in section for k in ["vcenter", "username", "password", "directory"]
-            ):
+            # Validate required fields (but allow optional fields to be missing)
+            required_fields = ["vcenter", "username", "password", "directory"]
+            missing = [k for k in required_fields if k not in section and k not in optional_fields]
+            
+            if missing:
                 logger.error(
-                    "Missing required fields in config: vcenter, username, password, directory"
+                    f"Missing required fields in config: {', '.join(missing)}. "
+                    f"You can provide these via CLI arguments."
                 )
                 return None
 
@@ -63,7 +69,7 @@ class CoreCode(object):
             logger.error(f"Error reading TOML config: {e}")
             return None
 
-    def read_conf_file_multi(self, config_path=None):
+    def read_conf_file_multi(self, config_path=None, optional_fields=None):
         """Read multi-vCenter config file (TOML format)
 
         Supports format:
@@ -83,9 +89,13 @@ class CoreCode(object):
 
         Args:
             config_path: Path to config file. If None, uses ~/.rvtools.toml
+            optional_fields: List of fields that can be missing (will be filled by CLI args)
 
         Returns: List of config dicts, or None if file not found or invalid
         """
+        if optional_fields is None:
+            optional_fields = []
+            
         if config_path is None:
             home_area = os.path.expanduser("~")
             toml_path = os.path.join(home_area, ".rvtools.toml")
@@ -103,20 +113,20 @@ class CoreCode(object):
                 # Multi-vCenter format with [default] and other [name] sections
                 for section_name, section_config in config.items():
                     if isinstance(section_config, dict) and self._validate_config(
-                        section_config
+                        section_config, optional_fields
                     ):
                         section_config["_section_name"] = section_name
                         configs.append(section_config)
             elif "vcenter" in config and isinstance(config["vcenter"], str):
                 # Legacy single-vCenter format
-                if self._validate_config(config):
+                if self._validate_config(config, optional_fields):
                     config["_section_name"] = "default"
                     configs.append(config)
             else:
                 # All top-level items should be sections
                 for section_name, section_config in config.items():
                     if isinstance(section_config, dict) and self._validate_config(
-                        section_config
+                        section_config, optional_fields
                     ):
                         section_config["_section_name"] = section_name
                         configs.append(section_config)
@@ -129,11 +139,18 @@ class CoreCode(object):
             logger.error(f"Error reading multi-vCenter TOML config: {e}")
             return None
 
-    def _validate_config(self, config):
-        """Check if config has minimum required fields"""
-        return all(
-            k in config for k in ["vcenter", "username", "password", "directory"]
-        )
+    def _validate_config(self, config, optional_fields=None):
+        """Check if config has minimum required fields
+        
+        Args:
+            config: Config dict to validate
+            optional_fields: List of fields that can be missing (will be filled by CLI args)
+        """
+        if optional_fields is None:
+            optional_fields = []
+            
+        required = ["vcenter", "username", "password", "directory"]
+        return all(k in config for k in required if k not in optional_fields)
 
     def _config_to_object(self, config_dict):
         """Convert config dict to CoreCode object"""

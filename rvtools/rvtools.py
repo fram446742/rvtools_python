@@ -389,8 +389,19 @@ def main():
         logger.info(f"Reading TOML configuration file from {config_file}")
         obj = CoreCode()
 
+        # Determine which required fields are being provided via CLI
+        optional_fields = []
+        if args.host is not None:
+            optional_fields.append("vcenter")
+        if args.username is not None:
+            optional_fields.append("username")
+        if args.password is not None:
+            optional_fields.append("password")
+        if args.directory is not None:
+            optional_fields.append("directory")
+
         # Try to read multi-vCenter config first
-        multi_configs = obj.read_conf_file_multi(args.config)
+        multi_configs = obj.read_conf_file_multi(args.config, optional_fields=optional_fields)
 
         if multi_configs:
             logger.info(
@@ -399,7 +410,7 @@ def main():
             config_from_file = multi_configs
         else:
             # Fallback to single config
-            conn = obj.read_conf_file(args.config)
+            conn = obj.read_conf_file(args.config, optional_fields=optional_fields)
             if conn is None:
                 sys.exit(1)
 
