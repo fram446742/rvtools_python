@@ -18,6 +18,7 @@ from rvtools.printrv.json_print import json_print_unified
 from rvtools.utils.retry import retry_with_backoff
 from rvtools.vinfo.vinfo import VInfoCollector
 from rvtools.vhealth.vhealth import VHealthCollector
+from rvtools.vhealth.vhealth_test import VHealthTestCollector, set_test_script_mode
 from rvtools.vpartition.vpartition import VPartitionCollector
 from rvtools.vcpu.vcpu import VCPUCollector
 from rvtools.vmemory.vmemory import VMemoryCollector
@@ -146,11 +147,19 @@ def get_args():
     return parser.parse_args()
 
 
-def get_all_collectors(service_instance, directory):
-    """Get all available collectors"""
+def get_all_collectors(service_instance, directory, test_script=False):
+    """Get all available collectors
+    
+    Args:
+        service_instance: vSphere connection
+        directory: Output directory
+        test_script: If True, use VHealthTestCollector instead of VHealthCollector
+    """
+    vhealth_collector = VHealthTestCollector(service_instance, directory) if test_script else VHealthCollector(service_instance, directory)
+    
     return [
         VInfoCollector(service_instance, directory),
-        VHealthCollector(service_instance, directory),
+        vhealth_collector,
         VPartitionCollector(service_instance, directory),
         VCPUCollector(service_instance, directory),
         VMemoryCollector(service_instance, directory),
@@ -223,7 +232,6 @@ def process_single_vcenter(
 ):
     """Process data collection and export for a single vCenter"""
     from rvtools.collectors.base_collector import set_include_custom_fields
-    from rvtools.vhealth.vhealth import set_test_script_mode
     
     # Set the custom fields flag for this vCenter
     set_include_custom_fields(include_custom_fields)
@@ -231,7 +239,7 @@ def process_single_vcenter(
     # Set test script mode if enabled
     if test_script:
         set_test_script_mode(True)
-        logger.info("Test script mode enabled: using vm.Layout.Disk for zombie detection")
+        logger.info("Test script mode enabled: using vm.Layout.Disk and SearchDatastoreSubFolders for zombie detection")
     
     ssl_context = ssl._create_unverified_context()
 
@@ -246,7 +254,7 @@ def process_single_vcenter(
 
     try:
         # Get all collectors and filter by requested sheets
-        all_collectors = get_all_collectors(service_instance, directory)
+        all_collectors = get_all_collectors(service_instance, directory, test_script=test_script)
         collectors = filter_collectors_by_sheets(all_collectors, sheets_filter)
 
         if sheets_filter:
