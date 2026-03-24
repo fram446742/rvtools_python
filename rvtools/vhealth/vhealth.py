@@ -507,25 +507,31 @@ class VHealthCollector(BaseCollector):
 
             vi_sdk_info = self._get_vi_sdk_info()
             
-            # First pass: group files by base name and filter companion files
-            file_groups = {}  # basename -> list of files
+            # Filter phase: remove -flat.vmdk and -ctk.vmdk files completely
+            filtered_files = []
             for file_entry in search_results.file:
                 try:
                     if not hasattr(file_entry, "path"):
                         continue
                     
                     file_path = file_entry.path.lower()
+                    filename = file_path.split("/")[-1]
                     
-                    # Extract base name, removing companion suffixes like -flat, -ctk, -vswp
-                    # Example: disk-flat.vmdk → disk, disk-ctk.vmdk → disk, disk.vmdk → disk
-                    filename = file_path.split("/")[-1]  # Get just the filename, not full path
+                    # Skip -flat.vmdk and -ctk.vmdk companion files
+                    if filename.endswith("-flat.vmdk") or filename.endswith("-ctk.vmdk"):
+                        continue
                     
-                    # Remove companion suffixes
-                    for suffix in ["-flat", "-ctk", "-vswp", "-delta", "-aux"]:
-                        if suffix in filename:
-                            filename = filename.replace(suffix, "")
+                    filtered_files.append((file_path, file_entry))
+                except Exception:
+                    continue
+            
+            # Grouping phase: group by basename to detect both .vmx and .vmdk with same name
+            file_groups = {}  # basename -> list of (ext, file_path, file_entry)
+            for file_path, file_entry in filtered_files:
+                try:
+                    filename = file_path.split("/")[-1]
                     
-                    # Now extract basename and extension
+                    # Extract basename and extension
                     path_parts = filename.rsplit(".", 1)
                     basename = path_parts[0]
                     ext = path_parts[1] if len(path_parts) > 1 else ""
@@ -536,24 +542,23 @@ class VHealthCollector(BaseCollector):
                 except Exception:
                     continue
             
-            # Second pass: deduplicate - report only one file per group
-            # Files are already grouped by base name with suffixes removed
-            # So disk.vmdk, disk-flat.vmdk, disk-ctk.vmdk are all in the same group
-            # We pick the primary file type and skip companions
+            # Deduplication phase: keep only one per basename
+            # If both .vmx and .vmdk exist with same name, keep .vmx (it's the actual VM config)
             processed = set()
             
             for basename, files in file_groups.items():
-                # Sort by file type: vmx and vmtx reported separately
-                # For vmdk: only report if no primary exists, else skip companions
                 vmx_files = [f for f in files if f[0] == "vmx"]
                 vmtx_files = [f for f in files if f[0] == "vmtx"]
                 vmdk_files = [f for f in files if f[0] == "vmdk"]
                 
-                # Report in order: vmx, vmtx, then only first vmdk (skip companions)
-                files_to_report = vmx_files + vmtx_files
-                if vmdk_files:
-                    # Keep only the first vmdk (others are companions like -flat, -ctk)
-                    files_to_report.append(vmdk_files[0])
+                # Priority: .vmx > .vmtx > .vmdk
+                files_to_report = []
+                if vmx_files:
+                    files_to_report = [vmx_files[0]]  # Keep only first .vmx
+                elif vmtx_files:
+                    files_to_report = [vmtx_files[0]]  # Keep only first .vmtx
+                elif vmdk_files:
+                    files_to_report = [vmdk_files[0]]  # Keep only first .vmdk
                 
                 # Check each file for orphaned status
                 for ext, file_path, file_entry in files_to_report:
