@@ -346,7 +346,7 @@ class VHealthCollector(BaseCollector):
         return warnings
 
     def _build_registered_file_set(self):
-        """Build set of all registered VM file paths"""
+        """Build set of all registered VM file paths including snapshots"""
         registered_files = set()
 
         try:
@@ -370,6 +370,10 @@ class VHealthCollector(BaseCollector):
                                     path = self._extract_datastore_path(device.backing.fileName).lower()
                                     registered_files.add(path)
                                     logger.debug(f"VM {vm.name}: registered disk {path}")
+                    
+                    # Collect snapshot disk files
+                    if vm.snapshot and vm.snapshot.rootSnapshotList:
+                        self._collect_snapshot_files(vm, vm.snapshot.rootSnapshotList, registered_files)
 
                 except Exception as e:
                     logger.debug(f"Error collecting VM files for {vm.name}: {e}")
@@ -626,6 +630,37 @@ class VHealthCollector(BaseCollector):
             logger.debug(f"Error processing search results: {e}")
 
         return warnings
+
+    def _collect_snapshot_files(self, vm, snapshots, registered_files):
+        """Recursively collect snapshot disk file paths"""
+        try:
+            for snapshot in snapshots:
+                try:
+                    # Get snapshot config files
+                    if snapshot.config and snapshot.config.vmPathName:
+                        path = self._extract_datastore_path(snapshot.config.vmPathName).lower()
+                        registered_files.add(path)
+                        logger.debug(f"VM {vm.name}: snapshot config {path}")
+                    
+                    # Get snapshot disk files
+                    if snapshot.config and hasattr(snapshot.config, "hardware"):
+                        if snapshot.config.hardware and snapshot.config.hardware.device:
+                            for device in snapshot.config.hardware.device:
+                                if isinstance(device, vim.vm.device.VirtualDisk):
+                                    if (hasattr(device, "backing") and device.backing and 
+                                        hasattr(device.backing, "fileName")):
+                                        path = self._extract_datastore_path(device.backing.fileName).lower()
+                                        registered_files.add(path)
+                                        logger.debug(f"VM {vm.name}: snapshot disk {path}")
+                    
+                    # Recursively process child snapshots
+                    if hasattr(snapshot, "childSnapshotList") and snapshot.childSnapshotList:
+                        self._collect_snapshot_files(vm, snapshot.childSnapshotList, registered_files)
+                
+                except Exception as e:
+                    logger.debug(f"Error collecting snapshot files: {e}")
+        except Exception as e:
+            logger.debug(f"Error in snapshot collection: {e}")
 
     def _extract_datastore_path(self, full_path):
         """Extract datastore-relative path from full path like [datastore] path"""
