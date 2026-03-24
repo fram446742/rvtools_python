@@ -630,8 +630,7 @@ class VHealthCollector(BaseCollector):
 
         return warnings
 
-
-
+    def _process_datastore_search_results(self, search_results, datastore_name, registered_files):
         """Process files found in datastore search for orphaned entries with deduplication"""
         warnings = []
 
