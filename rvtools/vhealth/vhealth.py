@@ -323,14 +323,22 @@ class VHealthCollector(BaseCollector):
 
         try:
             registered_files = self._build_registered_file_set()
+            logger.debug(f"[ZOMBIE DEBUG] Total registered files: {len(registered_files)}")
+            if registered_files:
+                sample = list(registered_files)[:3]
+                logger.debug(f"[ZOMBIE DEBUG] Sample registered paths: {sample}")
+            
             datastores = self.view_cache.get_list([vim.Datastore])
 
             for datastore in datastores:
                 try:
                     zombie_list = self._scan_datastore_for_orphans(datastore, registered_files)
+                    logger.debug(f"[ZOMBIE DEBUG] Datastore {datastore.name}: found {len(zombie_list)} zombies")
                     warnings.extend(zombie_list)
                 except Exception as e:
                     logger.debug(f"Error scanning datastore {datastore.name}: {e}")
+            
+            logger.debug(f"[ZOMBIE DEBUG] Total zombie warnings: {len(warnings)}")
 
         except Exception as e:
             logger.debug(f"Error in orphaned file detection: {e}", exc_info=True)
@@ -543,7 +551,8 @@ class VHealthCollector(BaseCollector):
                     continue
             
             # Deduplication phase: keep only one per basename
-            # If both .vmx and .vmdk exist with same name, keep .vmx (it's the actual VM config)
+            # Important: If both .vmx and .vmdk exist with same name, skip BOTH
+            # because the .vmx indicates this is a real VM (not a zombie VMDK)
             processed = set()
             
             for basename, files in file_groups.items():
@@ -551,14 +560,23 @@ class VHealthCollector(BaseCollector):
                 vmtx_files = [f for f in files if f[0] == "vmtx"]
                 vmdk_files = [f for f in files if f[0] == "vmdk"]
                 
-                # Priority: .vmx > .vmtx > .vmdk
-                files_to_report = []
+                # If there's a .vmx with this basename, skip BOTH .vmx and .vmdk
+                # (the .vmx means it's a registered VM, so the VMDK is not a zombie)
                 if vmx_files:
-                    files_to_report = [vmx_files[0]]  # Keep only first .vmx
-                elif vmtx_files:
-                    files_to_report = [vmtx_files[0]]  # Keep only first .vmtx
-                elif vmdk_files:
+                    logger.debug(f"[ZOMBIE DEBUG] Skipping group '{basename}': has .vmx (registered VM)")
+                    continue
+                
+                # If there's a .vmtx with this basename, skip BOTH .vmtx and .vmdk
+                # (the .vmtx means it's a registered template, so the VMDK is not a zombie)
+                if vmtx_files:
+                    logger.debug(f"[ZOMBIE DEBUG] Skipping group '{basename}': has .vmtx (registered template)")
+                    continue
+                
+                # Only report orphaned .vmdk if there's NO .vmx with same name
+                if vmdk_files:
                     files_to_report = [vmdk_files[0]]  # Keep only first .vmdk
+                else:
+                    continue
                 
                 # Check each file for orphaned status
                 for ext, file_path, file_entry in files_to_report:
@@ -574,6 +592,12 @@ class VHealthCollector(BaseCollector):
                     if not is_registered:
                         file_path_backslash = file_path.replace("/", "\\")
                         is_registered = (file_path_backslash in registered_files)
+                    
+                    # Log for debugging
+                    if not is_registered:
+                        logger.debug(f"[ZOMBIE DEBUG] File NOT in registered: {file_path}")
+                    else:
+                        logger.debug(f"[ZOMBIE DEBUG] File IS registered: {file_path}")
                     
                     if not is_registered:
                         full_path = f"[{datastore_name}] {file_entry.path}"
