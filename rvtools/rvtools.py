@@ -188,16 +188,49 @@ def get_all_collectors(service_instance, directory, test_script=False):
     ]
 
 
+def normalize_sheets_param(sheets_param):
+    """Normalize sheets parameter to comma-separated string.
+    
+    Supports three formats:
+    - None or empty: returns None (all sheets)
+    - "all": returns None (all sheets)
+    - "vHealth,vInfo": returns as-is (comma-separated string)
+    - ["vHealth", "vInfo"]: converts list to comma-separated string
+    
+    Args:
+        sheets_param: None, string ("all", "vHealth,vInfo"), or list ["vHealth", "vInfo"]
+    
+    Returns:
+        Normalized string or None for all sheets
+    """
+    if sheets_param is None:
+        return None
+    
+    if isinstance(sheets_param, list):
+        sheets_param = ",".join(sheets_param)
+    
+    if isinstance(sheets_param, str):
+        sheets_param = sheets_param.strip()
+        if sheets_param.lower() == "all":
+            return None
+        if sheets_param:
+            return sheets_param
+    
+    return None
+
+
 def filter_collectors_by_sheets(collectors, sheet_names):
     """Filter collectors to only include specified sheets
 
     Args:
         collectors: List of collector instances
-        sheet_names: Comma-separated sheet names or None for all
+        sheet_names: Comma-separated sheet names, list of sheet names, "all", or None for all
 
     Returns:
         Filtered list of collectors
     """
+    sheet_names = normalize_sheets_param(sheet_names)
+    
     if not sheet_names:
         return collectors
 
@@ -516,6 +549,7 @@ def main():
             export_format = _resolve_setting(cli_format, config.get("format"), "xlsx", override=override)
             threads = _resolve_setting(cli_threads, config.get("threads"), "auto", override=override)
             sheets_filter = _resolve_setting(cli_sheets, config.get("sheets"), None, override=override)
+            sheets_filter = normalize_sheets_param(sheets_filter)
             verbose = _resolve_setting(cli_verbose, config.get("verbose"), False, override=override)
             include_custom_fields = _resolve_setting(
                 cli_include_custom_fields,

@@ -15,6 +15,7 @@ directory = "/path/to/exports"
 format = "xlsx"          # Options: xlsx, csv, json-separate, json-unified
 threads = "auto"         # Options: auto (default), or number like 8, 16
 verbose = false          # Options: true, false
+sheets = "all"           # Options: "all", "vHealth,vInfo" or ["vHealth", "vInfo"]
 include_custom_fields = false  # Options: true, false. Include backup metadata columns
 
 # ============================================================
@@ -79,6 +80,11 @@ verbose = false
 #    - format: Default is "xlsx" (Excel format)
 #    - threads: Default is "auto" (min(8, cpu_count))
 #    - verbose: Default is false
+#    - sheets: Default is "all". Specify which sheets to collect:
+#      Options:
+#        - "all": Collect all available sheets (default)
+#        - "vInfo,vPartition,vHealth": Comma-separated list of sheet names
+#        - ["vInfo", "vPartition", "vHealth"]: Array of sheet names
 #    - include_custom_fields: Default is false. Set to true to include backup metadata columns
 #      (com_emc_avamar_vmware_snapshot, com_vmware_vdp2_is_protected, com_vmware_vdp2_protected_by)
 #
@@ -98,15 +104,28 @@ verbose = false
 #    Processes all sections [production], [staging], [development], [dr]
 #    Creates separate export files for each vCenter
 #
-# 6. Running with Specific Sections:
+# 6. Running with Specific Sheets:
 #    $ rvtools --sheets vInfo,vPartition,vHealth
-#    Collects only vInfo, vPartition, vHealth from all configured vCenters
+#    $ rvtools --sheets all
+#    Collects only specified sheets from all configured vCenters
+#    Use "all" (case-insensitive) to collect all available sheets
 #
 # 7. Running with CLI Arguments (overrides config file):
 #    $ rvtools -s prod-vc.domain.com -u admin -p pass -d /tmp --sheets vInfo
 #
-# 8. Troubleshooting:
+# 8. Sheets Configuration Examples in Config File:
+#    Example 1 (comma-separated string):
+#      sheets = "vInfo,vPartition,vHealth"
+#    Example 2 (array format):
+#      sheets = ["vInfo", "vPartition", "vHealth"]
+#    Example 3 (collect all sheets):
+#      sheets = "all"
+#    Example 4 (omit to default to all):
+#      # sheets not specified defaults to all
+#
+# 9. Troubleshooting:
 #    - Enable verbose mode for detailed logging: verbose = true
 #    - Check log file at: /path/to/directory/rvtools_YYYY-MM-DD_HH.MM.log
 #    - Verify vCenter credentials are correct
 #    - Ensure export directory exists and is writable
+#    - If sheets = "all" doesn't work, try sheets = "all" (literal "all" value, case-insensitive)
