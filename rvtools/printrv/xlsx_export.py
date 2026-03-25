@@ -82,5 +82,13 @@ class XlsxExporter:
     def save(self):
         """Save the workbook"""
         print(f"## Creating {self.full_path} file.")
+        
+        # Handle case where no sheets were created (all collectors returned empty data)
+        if len(self.workbook.sheetnames) == 0:
+            sheet = self.workbook.create_sheet("Summary")
+            sheet["A1"] = "No data collected"
+            sheet["A2"] = "All collectors returned empty results. Please verify vCenter connectivity and permissions."
+            sheet.column_dimensions["A"].width = 80
+        
         self.workbook.save(self.full_path)
         print(f"✓ XLSX file saved: {self.full_path}")
