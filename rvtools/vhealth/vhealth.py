@@ -341,11 +341,14 @@ class VHealthCollector(BaseCollector):
                 sample = list(registered_files)[:3]
                 logger.debug(f"[ZOMBIE DEBUG] Sample registered paths: {sample}")
             
+            # Build map of inactive VM disk paths for later lookup
+            inactive_vm_disks = self._build_inactive_vm_disk_map()
+            
             datastores = self.view_cache.get_list([vim.Datastore])
 
             for datastore in datastores:
                 try:
-                    zombie_list = self._scan_datastore_for_orphans(datastore, registered_files)
+                    zombie_list = self._scan_datastore_for_orphans(datastore, registered_files, inactive_vm_disks)
                     logger.debug(f"[ZOMBIE DEBUG] Datastore {datastore.name}: found {len(zombie_list)} zombies")
                     warnings.extend(zombie_list)
                 except Exception as e:
@@ -409,6 +412,66 @@ class VHealthCollector(BaseCollector):
 
         return registered_files
 
+    def _build_inactive_vm_disk_map(self):
+        """Build map of disk file paths to inactive (powered-off) VM names
+        
+        Returns dict mapping disk paths to VM info: {disk_path: {name, powerstate, config_path}}
+        """
+        inactive_vm_disks = {}
+
+        try:
+            vms = self.view_cache.get_list([vim.VirtualMachine])
+            
+            for vm in vms:
+                try:
+                    # Only track inactive (powered-off) VMs
+                    if not vm.runtime or vm.runtime.powerState != vim.VirtualMachine.PowerState.poweredOff:
+                        continue
+                    
+                    vm_info = {
+                        'name': vm.name,
+                        'powerstate': 'poweredOff',
+                        'config_path': None
+                    }
+                    
+                    # Get VM config path
+                    if vm.config and vm.config.files and vm.config.files.vmPathName:
+                        config_path = self._extract_datastore_path(vm.config.files.vmPathName).lower()
+                        vm_info['config_path'] = config_path
+                    
+                    # Collect disk paths from layout (if available)
+                    if hasattr(vm, 'layout') and vm.layout and hasattr(vm.layout, 'disk'):
+                        try:
+                            for disk in vm.layout.disk:
+                                if hasattr(disk, 'diskFile'):
+                                    for disk_file in disk.diskFile:
+                                        path = self._extract_datastore_path(disk_file).lower()
+                                        inactive_vm_disks[path] = vm_info
+                        except Exception:
+                            pass
+                    
+                    # Also collect from config as fallback
+                    if vm.config and vm.config.hardware and vm.config.hardware.device:
+                        try:
+                            for device in vm.config.hardware.device:
+                                if isinstance(device, vim.vm.device.VirtualDisk):
+                                    if (hasattr(device, "backing") and device.backing and 
+                                        hasattr(device.backing, "fileName")):
+                                        path = self._extract_datastore_path(device.backing.fileName).lower()
+                                        inactive_vm_disks[path] = vm_info
+                        except Exception:
+                            pass
+                
+                except Exception as e:
+                    logger.debug(f"Error collecting inactive VM disks for {vm.name if hasattr(vm, 'name') else 'unknown'}: {e}")
+            
+            logger.debug(f"Found {len(inactive_vm_disks)} disk paths belonging to {len(set(v['name'] for v in inactive_vm_disks.values()))} inactive VMs")
+
+        except Exception as e:
+            logger.debug(f"Error building inactive VM disk map: {e}", exc_info=True)
+
+        return inactive_vm_disks
+
     def _collect_config_disks(self, vm, registered_files):
         """Helper method to collect VM disk files from configuration"""
         try:
@@ -423,13 +486,16 @@ class VHealthCollector(BaseCollector):
         except Exception as e:
             logger.debug(f"Error collecting config disks for {vm.name}: {e}")
 
-    def _scan_datastore_for_orphans(self, datastore, registered_files):
+    def _scan_datastore_for_orphans(self, datastore, registered_files, inactive_vm_disks=None):
         """Scan a single datastore using SearchDatastoreSubFolders_Task for orphaned VM files
         
         Uses SearchDatastoreSubFolders_Task (built-in VMware recursion) instead of
         manual SearchDatastore_Task recursion for better performance and reliability.
         """
         warnings = []
+        
+        if inactive_vm_disks is None:
+            inactive_vm_disks = {}
 
         try:
             if not datastore.browser:
@@ -440,7 +506,7 @@ class VHealthCollector(BaseCollector):
             
             # Search using SearchDatastoreSubFolders_Task (built-in recursion)
             warnings.extend(
-                self._search_datastore_subfolders(datastore, datastore_path, registered_files)
+                self._search_datastore_subfolders(datastore, datastore_path, registered_files, inactive_vm_disks)
             )
 
         except Exception as e:
@@ -448,12 +514,15 @@ class VHealthCollector(BaseCollector):
 
         return warnings
 
-    def _search_datastore_path(self, datastore, datastore_path, registered_files):
+    def _search_datastore_path(self, datastore, datastore_path, registered_files, inactive_vm_disks=None):
         """Search datastore using SearchDatastoreSubFolders_Task (built-in recursion)
         
         This method uses VMware's built-in recursive search API for better performance
         and reliability compared to manual recursion.
         """
+        if inactive_vm_disks is None:
+            inactive_vm_disks = {}
+        
         warnings = []
 
         try:
@@ -506,7 +575,7 @@ class VHealthCollector(BaseCollector):
                 
                 for result_set in all_results:
                     result_warnings = self._process_datastore_search_results(
-                        result_set, datastore.name, registered_files
+                        result_set, datastore.name, registered_files, inactive_vm_disks
                     )
                     warnings.extend(result_warnings)
 
@@ -515,12 +584,17 @@ class VHealthCollector(BaseCollector):
 
         return warnings
 
-    def _search_datastore_subfolders(self, datastore, datastore_path, registered_files):
+    def _search_datastore_subfolders(self, datastore, datastore_path, registered_files, inactive_vm_disks=None):
         """Alias for backward compatibility - calls _search_datastore_path"""
-        return self._search_datastore_path(datastore, datastore_path, registered_files)
+        if inactive_vm_disks is None:
+            inactive_vm_disks = {}
+        return self._search_datastore_path(datastore, datastore_path, registered_files, inactive_vm_disks)
 
-    def _process_datastore_search_results(self, search_results, datastore_name, registered_files):
+    def _process_datastore_search_results(self, search_results, datastore_name, registered_files, inactive_vm_disks=None):
         """Process files found in datastore search for orphaned entries with deduplication"""
+        if inactive_vm_disks is None:
+            inactive_vm_disks = {}
+        
         warnings = []
 
         try:
@@ -628,19 +702,41 @@ class VHealthCollector(BaseCollector):
                         full_path = f"[{datastore_name}] {file_entry.path}"
                         
                         # Extract file metadata
-                        file_info = ""
+                        file_info_parts = []
+                        file_age_days = None
+                        inactive_vm_name = None
+                        
                         try:
                             if hasattr(file_entry, 'fileSize') and file_entry.fileSize:
                                 size_mb = file_entry.fileSize / (1024 * 1024)
-                                file_info = f" (size: {size_mb:.1f} MB"
+                                file_info_parts.append(f"size: {size_mb:.1f} MB")
+                            
                             if hasattr(file_entry, 'modification') and file_entry.modification:
-                                file_info += f", modified: {file_entry.modification.isoformat()}"
-                                if file_info.startswith(" ("):
-                                    file_info += ")"
-                            elif file_info:
-                                file_info += ")"
+                                mod_iso = file_entry.modification.isoformat()
+                                file_info_parts.append(f"modified: {mod_iso}")
+                                
+                                # Calculate age in days
+                                try:
+                                    from datetime import datetime, timezone
+                                    now = datetime.now(timezone.utc) if file_entry.modification.tzinfo else datetime.now()
+                                    delta = now - file_entry.modification
+                                    file_age_days = delta.days
+                                except:
+                                    pass
                         except:
                             pass
+                        
+                        # Check if this disk belongs to an inactive VM
+                        disk_path_for_lookup = file_path_normalized.lower()
+                        if disk_path_for_lookup in inactive_vm_disks:
+                            vm_info = inactive_vm_disks[disk_path_for_lookup]
+                            inactive_vm_name = vm_info.get('name', 'Unknown')
+                            file_info_parts.append(f"belongs to inactive VM: {inactive_vm_name}")
+                        
+                        # Build file info string
+                        file_info = ""
+                        if file_info_parts:
+                            file_info = f" ({', '.join(file_info_parts)})"
                         
                         # Determine message based on file extension
                         if file_path.endswith(".vmdk"):
