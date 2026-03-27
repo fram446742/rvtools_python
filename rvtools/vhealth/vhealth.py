@@ -571,20 +571,20 @@ class VHealthCollector(BaseCollector):
             
             for basename, files in file_groups.items():
                 vmx_files = [f for f in files if f[0] == "vmx"]
-                vmtx_files = [f for f in files if f[0] == "vmtx"]
+                # vmtx_files = [f for f in files if f[0] == "vmtx"]
                 vmdk_files = [f for f in files if f[0] == "vmdk"]
                 
                 # If there's a .vmx with this basename, skip BOTH .vmx and .vmdk
                 # (the .vmx means it's a registered VM, so the VMDK is not a zombie)
                 if vmx_files:
-                    logger.debug(f"[ZOMBIE DEBUG] Skipping group '{basename}': has .vmx (registered VM)")
+                    # logger.debug(f"[ZOMBIE DEBUG] Skipping group '{basename}': has .vmx (registered VM)")
                     continue
                 
-                # If there's a .vmtx with this basename, skip BOTH .vmtx and .vmdk
-                # (the .vmtx means it's a registered template, so the VMDK is not a zombie)
-                if vmtx_files:
-                    logger.debug(f"[ZOMBIE DEBUG] Skipping group '{basename}': has .vmtx (registered template)")
-                    continue
+                # # If there's a .vmtx with this basename, skip BOTH .vmtx and .vmdk
+                # # (the .vmtx means it's a registered template, so the VMDK is not a zombie)
+                # if vmtx_files:
+                #     logger.debug(f"[ZOMBIE DEBUG] Skipping group '{basename}': has .vmtx (registered template)")
+                #     continue
                 
                 # Only report orphaned .vmdk if there's NO .vmx with same name
                 if vmdk_files:
