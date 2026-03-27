@@ -376,7 +376,7 @@ class VHealthCollector(BaseCollector):
                     if vm.config and vm.config.files and vm.config.files.vmPathName:
                         path = self._extract_datastore_path(vm.config.files.vmPathName).lower()
                         registered_files.add(path)
-                        logger.debug(f"VM {vm.name}: registered config file {path}")
+                        # logger.debug(f"VM {vm.name}: registered config file {path}")
 
                     # Use vm.Layout.Disk (runtime layout) for actual disk files
                     if hasattr(vm, 'layout') and vm.layout and hasattr(vm.layout, 'disk'):
@@ -386,7 +386,7 @@ class VHealthCollector(BaseCollector):
                                     for disk_file in disk.diskFile:
                                         path = self._extract_datastore_path(disk_file).lower()
                                         registered_files.add(path)
-                                        logger.debug(f"VM {vm.name}: layout disk {path}")
+                                        # logger.debug(f"VM {vm.name}: layout disk {path}")
                         except Exception as e:
                             logger.debug(f"Error collecting vm.Layout.Disk for {vm.name}: {e}")
                             # Fall back to config-based collection
