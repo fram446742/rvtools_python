@@ -824,7 +824,6 @@ class VHealthCollector(BaseCollector):
                             "name": full_path,
                             "message": msg,
                             "message_type": "Zombie",
-                            "age": file_age_days,
                             "vi_sdk_server": vi_sdk_info["server"],
                             "vi_sdk_uuid": vi_sdk_info["uuid"],
                         }
@@ -841,22 +840,13 @@ class VHealthCollector(BaseCollector):
         try:
             for snapshot in snapshots:
                 try:
-                    # Get snapshot config files
-                    if snapshot.config and snapshot.config.vmPathName:
-                        path = self._extract_datastore_path(snapshot.config.vmPathName).lower()
-                        registered_files.add(path)
-                        logger.debug(f"VM {vm.name}: snapshot config {path}")
+                    # SnapshotTree objects don't have config property
+                    # Snapshots are tracked by their name and state, not separate config files
+                    # The actual snapshot files are virtual disks referenced by the snapshot
                     
-                    # Get snapshot disk files
-                    if snapshot.config and hasattr(snapshot.config, "hardware"):
-                        if snapshot.config.hardware and snapshot.config.hardware.device:
-                            for device in snapshot.config.hardware.device:
-                                if isinstance(device, vim.vm.device.VirtualDisk):
-                                    if (hasattr(device, "backing") and device.backing and 
-                                        hasattr(device.backing, "fileName")):
-                                        path = self._extract_datastore_path(device.backing.fileName).lower()
-                                        registered_files.add(path)
-                                        logger.debug(f"VM {vm.name}: snapshot disk {path}")
+                    # For now, we skip collecting snapshot-specific files as they are
+                    # typically managed by vCenter and not orphaned separately
+                    # The snapshot disks are referenced through the VM's disk files
                     
                     # Recursively process child snapshots
                     if hasattr(snapshot, "childSnapshotList") and snapshot.childSnapshotList:
