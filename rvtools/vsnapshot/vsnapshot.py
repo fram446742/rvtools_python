@@ -3,6 +3,9 @@
 from pyVmomi import vim
 from rvtools.collectors.base_collector import BaseCollector
 from rvtools.vm_utils import extract_vm_common_properties
+import logging
+
+logger = logging.getLogger("rvtools")
 
 
 class VSnapshotCollector(BaseCollector):
@@ -13,20 +16,33 @@ class VSnapshotCollector(BaseCollector):
         return "vSnapshot"
 
     def collect(self):
-        """Collect snapshot information from all VMs"""
+        """Collect snapshot information from all VMs (powered on and off)"""
         view_type = [vim.VirtualMachine]
         vm_view_list = self.view_cache.get_list(view_type)
 
         snapshot_list = []
+        
+        logger.debug(f"[vSnapshot] Found {len(vm_view_list)} VMs total")
 
         for vm in vm_view_list:
-            vm_snapshots = self._collect_vm_snapshots(vm)
-            snapshot_list.extend(vm_snapshots)
+            try:
+                power_state = str(vm.runtime.powerState) if vm.runtime.powerState else "unknown"
+                vm_snapshots = self._collect_vm_snapshots(vm)
+                
+                if vm_snapshots:
+                    logger.debug(f"[vSnapshot] VM {vm.name} ({power_state}): {len(vm_snapshots)} snapshots")
+                else:
+                    logger.debug(f"[vSnapshot] VM {vm.name} ({power_state}): no snapshots")
+                
+                snapshot_list.extend(vm_snapshots)
+            except Exception as e:
+                logger.debug(f"[vSnapshot] Error collecting snapshots for VM: {e}", exc_info=True)
 
+        logger.debug(f"[vSnapshot] Total snapshots collected: {len(snapshot_list)}")
         return snapshot_list
 
     def _collect_vm_snapshots(self, vm):
-        """Collect snapshots for a single VM"""
+        """Collect snapshots for a single VM - works for both powered on and off"""
         snapshots = []
 
         if not vm.snapshot or not vm.snapshot.rootSnapshotList:

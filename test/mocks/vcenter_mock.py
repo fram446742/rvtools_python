@@ -176,6 +176,7 @@ class MockVirtualMachine:
         self.network = [MockNetwork()]
         self.layout = MockLayout()
         self.customValue = custom_values or []
+        self.snapshot = None  # No snapshots by default
 
     @property
     def _GetMoId(self):
