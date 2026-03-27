@@ -647,6 +647,26 @@ class VHealthCollector(BaseCollector):
                 vmx_files = [f for f in files if f[0] == "vmx"]
                 vmtx_files = [f for f in files if f[0] == "vmtx"]
                 vmdk_files = [f for f in files if f[0] == "vmdk"]
+                vmsn_files = [f for f in files if f[0] == "vmsn"]
+                
+                # Log vmsn files for snapshot tracking verification
+                if vmsn_files:
+                    for ext, vmsn_path, vmsn_entry in vmsn_files:
+                        try:
+                            size_info = ""
+                            if hasattr(vmsn_entry, 'fileSize') and vmsn_entry.fileSize:
+                                size_mb = vmsn_entry.fileSize / (1024 * 1024)
+                                size_info = f" | size: {size_mb:.1f} MB"
+                            
+                            mod_info = ""
+                            if hasattr(vmsn_entry, 'modification') and vmsn_entry.modification:
+                                mod_iso = vmsn_entry.modification.isoformat()
+                                mod_info = f" | modified: {mod_iso}"
+                            
+                            logger.debug(f"[VMSN] Found snapshot file: {vmsn_path}{size_info}{mod_info}")
+                        except Exception as e:
+                            logger.debug(f"[VMSN] Found snapshot file: {vmsn_path}")
+
                 
                 # If there's a .vmx with this basename, skip BOTH .vmx and .vmdk
                 # (the .vmx means it's a registered VM, so the VMDK is not a zombie)
