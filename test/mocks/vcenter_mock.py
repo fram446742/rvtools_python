@@ -52,7 +52,7 @@ class MockHardware:
         self.numCPU = 4
         self.numCoresPerSocket = 2
         self.memoryMB = 8192
-        self.device = [MockVirtualDisk(), MockVirtualDisk()]
+        self.device = [MockVirtualDisk(), MockVirtualDisk(), MockVirtualUSB(), MockVirtualUSBController()]
         self.version = "vmx-19"
 
 
@@ -63,6 +63,16 @@ class MockVirtualDisk:
         self.key = 2000
         self.controllerKey = 1000
         self.unitNumber = 0
+
+
+class MockVirtualUSB(vim.vm.device.VirtualUSB):
+    """Mock VirtualUSB device"""
+    pass
+
+
+class MockVirtualUSBController(vim.vm.device.VirtualUSBController):
+    """Mock VirtualUSBController device"""
+    pass
 
 
 class MockLatencySensitivity:

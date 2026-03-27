@@ -27,18 +27,14 @@ class VUSBCollector(BaseCollector):
 
         # Get all VMs using cached view
         vms = self.view_cache.get_list([vim.VirtualMachine])
-        logger.debug(f"[vUSB] Starting collection from {len(vms)} VMs")
         
         for vm in vms:
             try:
                 vm_usbs = self._collect_vm_usbs(vm)
-                if vm_usbs:
-                    logger.debug(f"[vUSB] VM {vm.name}: found {len(vm_usbs)} USB devices")
                 usb_list.extend(vm_usbs)
             except Exception as e:
-                logger.debug(f"[vUSB] Error collecting USB for VM {vm.name}: {e}", exc_info=True)
+                logger.debug(f"Error collecting USB for VM {vm.name}: {e}", exc_info=True)
 
-        logger.debug(f"[vUSB] Collection complete: {len(usb_list)} total USB devices found")
         return usb_list
 
     def _collect_vm_usbs(self, vm):
@@ -46,34 +42,22 @@ class VUSBCollector(BaseCollector):
         usbs = []
 
         if not vm.config or not vm.config.hardware or not vm.config.hardware.device:
-            logger.debug(f"[vUSB] VM {vm.name}: no hardware devices")
             return usbs
 
-        # Collect all device types for debugging
-        device_types = {}
         for device in vm.config.hardware.device:
-            device_type = type(device).__name__
-            device_types[device_type] = device_types.get(device_type, 0) + 1
-
-        logger.debug(f"[vUSB] VM {vm.name}: device types present: {device_types}")
-
-        # Now collect USB devices
-        for device in vm.config.hardware.device:
-            device_type = type(device).__name__
-            if device_type in ("VirtualUSBController", "VirtualUSBXHCIController", "VirtualUSB"):
-                logger.debug(f"[vUSB] VM {vm.name}: found USB device type {device_type}")
+            # Check if device is an instance of USB types
+            if isinstance(device, (vim.vm.device.VirtualUSBController, 
+                                   vim.vm.device.VirtualUSBXHCIController, 
+                                   vim.vm.device.VirtualUSB)):
                 usb_data = self._collect_usb(vm, device)
                 usbs.append(usb_data)
-            elif "USB" in device_type:
-                # Log any other USB-related types we might be missing
-                logger.debug(f"[vUSB] VM {vm.name}: found USB-related device type {device_type} (not currently collected)")
 
         return usbs
 
     def _collect_usb(self, vm, usb_device):
         """Collect information for a single USB device"""
         usb_data = {}
-        device_type = type(usb_device).__name__
+        device_type = type(usb_device).__name__.split('.')[-1]  # Get last part of name
 
         usb_data["vm"] = vm.name or ""
         usb_data["powerstate"] = (
@@ -91,7 +75,7 @@ class VUSBCollector(BaseCollector):
         
         # VirtualUSB devices have 'connected' property directly
         # VirtualDevice (parent) has 'connectable' property (for pluggable devices like controllers)
-        if device_type == "VirtualUSB":
+        if isinstance(usb_device, vim.vm.device.VirtualUSB):
             usb_data["connected"] = (
                 str(usb_device.connected) if hasattr(usb_device, "connected") else ""
             )

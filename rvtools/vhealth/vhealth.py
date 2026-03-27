@@ -150,21 +150,28 @@ class VHealthCollector(BaseCollector):
             if vm.config and vm.config.hardware and vm.config.hardware.device:
                 for device in vm.config.hardware.device:
                     if isinstance(device, vim.vm.device.VirtualUSB):
-                        is_connected = (hasattr(device, 'connectable') and 
-                                      device.connectable and 
-                                      device.connectable.connected)
+                        # VirtualUSB has direct 'connected' property
+                        is_connected = hasattr(device, 'connected') and device.connected
                         if is_connected:
-                            # Try to get device label safely
-                            device_label = "USB device"
+                            # Build USB ID from available properties
+                            usb_id = "USB device"
                             try:
-                                if hasattr(device, 'deviceInfo') and device.deviceInfo:
-                                    device_label = device.deviceInfo.label or device_label
+                                # Try to get vendor/product ID first
+                                if hasattr(device, 'vendor') and hasattr(device, 'product'):
+                                    vendor = device.vendor
+                                    product = device.product
+                                    if vendor and product:
+                                        usb_id = f"USB {vendor:04x}:{product:04x}"
+                                    elif hasattr(device, 'deviceInfo') and device.deviceInfo:
+                                        usb_id = device.deviceInfo.label or usb_id
+                                elif hasattr(device, 'deviceInfo') and device.deviceInfo:
+                                    usb_id = device.deviceInfo.label or usb_id
                             except:
                                 pass
                             
                             warning = {
                                 "name": vm.name,
-                                "message": f"VM has a USB device connected! {device_label}",
+                                "message": f"VM has a USB device connected! [usb id: {usb_id}]",
                                 "message_type": "USB",
                                 "vi_sdk_server": vi_sdk_info["server"],
                                 "vi_sdk_uuid": vi_sdk_info["uuid"],
@@ -602,22 +609,48 @@ class VHealthCollector(BaseCollector):
                     
                     # Log for debugging
                     if not is_registered:
-                        logger.debug(f"[ZOMBIE DEBUG] File NOT in registered: {file_path}")
+                        # Extract additional info from file_entry
+                        file_size = ""
+                        file_date = ""
+                        try:
+                            if hasattr(file_entry, 'fileSize') and file_entry.fileSize:
+                                file_size = f" size: {file_entry.fileSize} bytes"
+                            if hasattr(file_entry, 'modification') and file_entry.modification:
+                                file_date = f" modified: {file_entry.modification.isoformat()}"
+                        except:
+                            pass
+                        
+                        logger.debug(f"[ZOMBIE DEBUG] File NOT in registered: {file_path}{file_size}{file_date}")
                     else:
                         logger.debug(f"[ZOMBIE DEBUG] File IS registered: {file_path}")
                     
                     if not is_registered:
                         full_path = f"[{datastore_name}] {file_entry.path}"
                         
+                        # Extract file metadata
+                        file_info = ""
+                        try:
+                            if hasattr(file_entry, 'fileSize') and file_entry.fileSize:
+                                size_mb = file_entry.fileSize / (1024 * 1024)
+                                file_info = f" (size: {size_mb:.1f} MB"
+                            if hasattr(file_entry, 'modification') and file_entry.modification:
+                                file_info += f", modified: {file_entry.modification.isoformat()}"
+                                if file_info.startswith(" ("):
+                                    file_info += ")"
+                            elif file_info:
+                                file_info += ")"
+                        except:
+                            pass
+                        
                         # Determine message based on file extension
                         if file_path.endswith(".vmdk"):
-                            msg = "Possibly a Zombie vmdk file! Please check."
+                            msg = f"Possibly a Zombie vmdk file! Please check.{file_info}"
                         elif file_path.endswith(".vmx"):
-                            msg = "Possibly a Zombie VM! Please check."
+                            msg = f"Possibly a Zombie VM! Please check.{file_info}"
                         elif file_path.endswith(".vmtx"):
-                            msg = "Possibly a Zombie Template! Please check."
+                            msg = f"Possibly a Zombie Template! Please check.{file_info}"
                         else:
-                            msg = "Possibly an orphaned file! Please check."
+                            msg = f"Possibly an orphaned file! Please check.{file_info}"
 
                         warning = {
                             "name": full_path,
