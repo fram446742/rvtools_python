@@ -683,18 +683,42 @@ class VHealthCollector(BaseCollector):
                     
                     # Log for debugging
                     if not is_registered:
-                        # Extract additional info from file_entry
-                        file_size = ""
-                        file_date = ""
+                        # Build comprehensive debug info with all properties
+                        debug_parts = [file_path]
+                        
                         try:
                             if hasattr(file_entry, 'fileSize') and file_entry.fileSize:
-                                file_size = f" size: {file_entry.fileSize} bytes"
+                                size_bytes = file_entry.fileSize
+                                size_mb = size_bytes / (1024 * 1024)
+                                debug_parts.append(f"size: {size_bytes} bytes ({size_mb:.1f} MB)")
+                            
                             if hasattr(file_entry, 'modification') and file_entry.modification:
-                                file_date = f" modified: {file_entry.modification.isoformat()}"
+                                mod_iso = file_entry.modification.isoformat()
+                                debug_parts.append(f"modified: {mod_iso}")
+                                
+                                # Calculate age in days
+                                try:
+                                    from datetime import datetime, timezone
+                                    now = datetime.now(timezone.utc) if file_entry.modification.tzinfo else datetime.now()
+                                    delta = now - file_entry.modification
+                                    age_days = delta.days
+                                    debug_parts.append(f"age: {age_days} days")
+                                except:
+                                    pass
                         except:
                             pass
                         
-                        logger.debug(f"[ZOMBIE DEBUG] File NOT in registered: {file_path}{file_size}{file_date}")
+                        # Check if this disk belongs to an inactive VM
+                        disk_path_for_lookup = file_path_normalized.lower()
+                        if disk_path_for_lookup in inactive_vm_disks:
+                            vm_info = inactive_vm_disks[disk_path_for_lookup]
+                            inactive_vm_name = vm_info.get('name', 'Unknown')
+                            debug_parts.append(f"belongs to inactive VM: {inactive_vm_name}")
+                        else:
+                            debug_parts.append("belongs to: permanently orphaned (no inactive VM match)")
+                        
+                        debug_info = " | ".join(debug_parts)
+                        logger.debug(f"[ZOMBIE DEBUG] File NOT in registered: {debug_info}")
                     else:
                         logger.debug(f"[ZOMBIE DEBUG] File IS registered: {file_path}")
                     
