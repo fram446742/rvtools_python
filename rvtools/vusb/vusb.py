@@ -38,8 +38,9 @@ class VUSBCollector(BaseCollector):
             return usbs
 
         for device in vm.config.hardware.device:
-            # Check for VirtualUSBController only
-            if type(device).__name__ in ("VirtualUSBController",):
+            # Check for all USB device types (controller, XHCI, and actual USB devices)
+            device_type = type(device).__name__
+            if device_type in ("VirtualUSBController", "VirtualUSBXHCIController", "VirtualUSB"):
                 usb_data = self._collect_usb(vm, device)
                 usbs.append(usb_data)
 
@@ -67,10 +68,22 @@ class VUSBCollector(BaseCollector):
             if hasattr(usb_device, "connectable") and usb_device.connectable
             else ""
         )
-        usb_data["family"] = ""
-        usb_data["speed"] = ""
-        usb_data["ehci_enabled"] = ""
-        usb_data["auto_connect"] = ""
+        
+        # Extract USB device properties if available (VirtualUSB devices have these)
+        usb_data["family"] = (
+            ", ".join(usb_device.family) if hasattr(usb_device, "family") and usb_device.family else ""
+        )
+        usb_data["speed"] = (
+            ", ".join(usb_device.speed) if hasattr(usb_device, "speed") and usb_device.speed else ""
+        )
+        
+        # Extract controller-specific properties
+        usb_data["ehci_enabled"] = (
+            str(usb_device.ehciEnabled) if hasattr(usb_device, "ehciEnabled") else ""
+        )
+        usb_data["auto_connect"] = (
+            str(usb_device.autoConnect) if hasattr(usb_device, "autoConnect") else ""
+        )
         usb_data["bus_number"] = ""
         usb_data["unit_number"] = ""
 

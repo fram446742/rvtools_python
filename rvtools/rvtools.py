@@ -18,7 +18,6 @@ from rvtools.printrv.json_print import json_print_unified
 from rvtools.utils.retry import retry_with_backoff
 from rvtools.vinfo.vinfo import VInfoCollector
 from rvtools.vhealth.vhealth import VHealthCollector
-from rvtools.vhealth.vhealth_test import VHealthTestCollector, set_test_script_mode
 from rvtools.vpartition.vpartition import VPartitionCollector
 from rvtools.vcpu.vcpu import VCPUCollector
 from rvtools.vmemory.vmemory import VMemoryCollector
@@ -136,26 +135,17 @@ def get_args():
         help="Allow terminal parameters to override config file values",
     )
 
-    parser.add_argument(
-        "--test-script",
-        required=False,
-        action="store_true",
-        default=False,
-        help="Use alternative zombie detection logic (vm.Layout.Disk instead of vm.config.hardware.device) for testing",
-    )
-
     return parser.parse_args()
 
 
-def get_all_collectors(service_instance, directory, test_script=False):
+def get_all_collectors(service_instance, directory):
     """Get all available collectors
     
     Args:
         service_instance: vSphere connection
         directory: Output directory
-        test_script: If True, use VHealthTestCollector instead of VHealthCollector
     """
-    vhealth_collector = VHealthTestCollector(service_instance, directory) if test_script else VHealthCollector(service_instance, directory)
+    vhealth_collector = VHealthCollector(service_instance, directory)
     
     return [
         VInfoCollector(service_instance, directory),
@@ -261,18 +251,13 @@ def connect_to_vcenter(server, username, password, ssl_context):
 
 
 def process_single_vcenter(
-    server, username, password, directory, export_format, max_workers, sheets_filter, include_custom_fields=False, test_script=False
+    server, username, password, directory, export_format, max_workers, sheets_filter, include_custom_fields=False
 ):
     """Process data collection and export for a single vCenter"""
     from rvtools.collectors.base_collector import set_include_custom_fields
     
     # Set the custom fields flag for this vCenter
     set_include_custom_fields(include_custom_fields)
-    
-    # Set test script mode if enabled
-    if test_script:
-        set_test_script_mode(True)
-        logger.info("Test script mode enabled: using vm.Layout.Disk and SearchDatastoreSubFolders for zombie detection")
     
     ssl_context = ssl._create_unverified_context()
 
@@ -287,7 +272,7 @@ def process_single_vcenter(
 
     try:
         # Get all collectors and filter by requested sheets
-        all_collectors = get_all_collectors(service_instance, directory, test_script=test_script)
+        all_collectors = get_all_collectors(service_instance, directory)
         collectors = filter_collectors_by_sheets(all_collectors, sheets_filter)
 
         if sheets_filter:
@@ -415,7 +400,6 @@ def main():
     cli_sheets = args.sheets
     cli_verbose = args.verbose
     cli_include_custom_fields = args.include_custom_fields
-    test_script = args.test_script
 
     # Get configuration
     # Load config file if needed (when any required field is missing)
@@ -594,7 +578,6 @@ def main():
                 max_workers=max_workers,
                 sheets_filter=sheets_filter,
                 include_custom_fields=include_custom_fields,
-                test_script=test_script,
             )
 
             if success:

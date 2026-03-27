@@ -2,6 +2,12 @@
 
 Implements comprehensive health checks matching RVTools vHealth output with proper
 separation of message (warning text with placeholders) and message_type (category).
+
+Uses vm.Layout.Disk (actual runtime state) instead of vm.config.hardware.device 
+(desired configuration) for more accurate orphaned file detection.
+
+Uses SearchDatastoreSubFolders_Task (built-in VMware recursion) for improved performance
+and reliability in datastore scanning.
 """
 
 from pyVmomi import vim
@@ -346,25 +352,43 @@ class VHealthCollector(BaseCollector):
         return warnings
 
     def _build_registered_file_set(self):
-        """Build set of all registered VM file paths including snapshots"""
+        """Build set of all registered VM file paths - uses vm.Layout.Disk (runtime state)
+        
+        Uses vm.Layout.Disk (actual runtime layout) instead of vm.config.hardware.device
+        (desired configuration) to detect more accurate orphaned files.
+        """
         registered_files = set()
 
         try:
             vms = self.view_cache.get_list([vim.VirtualMachine])
-            logger.debug(f"Building registered files from {len(vms)} VMs")
+            logger.debug(f"Building registered files from {len(vms)} VMs using vm.Layout.Disk (runtime)")
 
             for vm in vms:
                 try:
-                    # Collect VM config file path
+                    # Collect VM config file path (same in both modes)
                     if vm.config and vm.config.files and vm.config.files.vmPathName:
                         path = self._extract_datastore_path(vm.config.files.vmPathName).lower()
                         registered_files.add(path)
                         logger.debug(f"VM {vm.name}: registered config file {path}")
 
-                    # Collect disk file paths (production method)
-                    self._collect_config_disks(vm, registered_files)
+                    # Use vm.Layout.Disk (runtime layout) for actual disk files
+                    if hasattr(vm, 'layout') and vm.layout and hasattr(vm.layout, 'disk'):
+                        try:
+                            for disk in vm.layout.disk:
+                                if hasattr(disk, 'diskFile'):
+                                    for disk_file in disk.diskFile:
+                                        path = self._extract_datastore_path(disk_file).lower()
+                                        registered_files.add(path)
+                                        logger.debug(f"VM {vm.name}: layout disk {path}")
+                        except Exception as e:
+                            logger.debug(f"Error collecting vm.Layout.Disk for {vm.name}: {e}")
+                            # Fall back to config-based collection
+                            self._collect_config_disks(vm, registered_files)
+                    else:
+                        # Fall back if layout unavailable
+                        self._collect_config_disks(vm, registered_files)
                     
-                    # Collect snapshot disk files
+                    # Collect snapshot disk files (same in both modes)
                     if vm.snapshot and vm.snapshot.rootSnapshotList:
                         self._collect_snapshot_files(vm, vm.snapshot.rootSnapshotList, registered_files)
 
@@ -393,19 +417,23 @@ class VHealthCollector(BaseCollector):
             logger.debug(f"Error collecting config disks for {vm.name}: {e}")
 
     def _scan_datastore_for_orphans(self, datastore, registered_files):
-        """Scan a single datastore for orphaned VM files - searches all directories"""
+        """Scan a single datastore using SearchDatastoreSubFolders_Task for orphaned VM files
+        
+        Uses SearchDatastoreSubFolders_Task (built-in VMware recursion) instead of
+        manual SearchDatastore_Task recursion for better performance and reliability.
+        """
         warnings = []
 
         try:
             if not datastore.browser:
                 return warnings
 
-            logger.debug(f"Searching datastore {datastore.name} for orphaned files... (registered files: {len(registered_files)})")
+            logger.debug(f"Searching datastore {datastore.name} for orphaned files using SearchDatastoreSubFolders_Task... (registered files: {len(registered_files)})")
             datastore_path = f"[{datastore.name}]"
             
-            # Search using manual recursion (production method)
+            # Search using SearchDatastoreSubFolders_Task (built-in recursion)
             warnings.extend(
-                self._search_datastore_path(datastore, datastore_path, registered_files)
+                self._search_datastore_subfolders(datastore, datastore_path, registered_files)
             )
 
         except Exception as e:
@@ -414,106 +442,75 @@ class VHealthCollector(BaseCollector):
         return warnings
 
     def _search_datastore_path(self, datastore, datastore_path, registered_files):
-        """Search a specific datastore path for orphaned files (optimized)"""
+        """Search datastore using SearchDatastoreSubFolders_Task (built-in recursion)
+        
+        This method uses VMware's built-in recursive search API for better performance
+        and reliability compared to manual recursion.
+        """
         warnings = []
 
         try:
-            # First search for matching files AT THIS LEVEL
+            # Create search spec for VM-related files
             spec = vim.host.DatastoreBrowser.SearchSpec()
             spec.matchPattern = ["*.vmx", "*.vmdk", "*.vmtx"]
-            
+            spec.details = vim.host.DatastoreBrowser.FileInfo.Details()
+            spec.details.fileSize = True
+            spec.details.fileType = True
+            spec.details.modification = True
+
+            # Use built-in recursive search (handles recursion automatically)
             try:
-                task = datastore.browser.SearchDatastore_Task(datastore_path, spec)
-            except vim.fault.NoPermission as e:
-                logger.debug(f"Permission denied: {datastore_path}")
-                return warnings
+                task = datastore.browser.SearchDatastoreSubFolders_Task(
+                    datastorePath=datastore_path,
+                    searchSpec=spec
+                )
             except Exception as e:
-                logger.debug(f"Error searching: {datastore_path} - {e}")
+                logger.debug(f"Error starting SearchDatastoreSubFolders: {datastore_path} - {e}")
                 return warnings
 
-            # Wait for task with timeout
+            # Wait for task completion
             start_time = time.time()
-            timeout = 60
+            timeout = 120  # Longer timeout for recursive search
             
             while True:
                 task_state = str(task.info.state)
                 if task_state == "success":
                     break
                 elif task_state == "error":
-                    logger.debug(f"Search error: {datastore_path}")
-                    break
+                    logger.debug(f"SearchDatastoreSubFolders error: {datastore_path}")
+                    return warnings
                 elif task_state in ["running", "queued"]:
                     if time.time() - start_time > timeout:
-                        logger.debug(f"Search timeout: {datastore_path}")
-                        break
+                        logger.debug(f"SearchDatastoreSubFolders timeout: {datastore_path}")
+                        return warnings
                     time.sleep(0.5)
                 else:
                     break
 
+            # Process all results (includes all subdirectories recursively)
             if str(task.info.state) == "success" and task.info.result:
-                result_warnings = self._process_datastore_search_results(
-                    task.info.result, datastore.name, registered_files
-                )
-                warnings.extend(result_warnings)
-            
-            # NOW: Search for subdirectories (no matchPattern to get all entries)
-            try:
-                dir_spec = vim.host.DatastoreBrowser.SearchSpec()
-                dir_spec.details = vim.host.DatastoreBrowser.FileInfo.Details()
-                dir_spec.details.fileOwner = True
-                dir_task = datastore.browser.SearchDatastore_Task(datastore_path, dir_spec)
-            except Exception:
-                return warnings
-
-            # Wait for directory enumeration
-            start_time = time.time()
-            while True:
-                task_state = str(dir_task.info.state)
-                if task_state == "success":
-                    break
-                elif task_state == "error":
-                    break
-                elif task_state in ["running", "queued"]:
-                    if time.time() - start_time > timeout:
-                        break
-                    time.sleep(0.5)
-                else:
-                    break
-
-            # Extract subdirectories and search recursively
-            if str(dir_task.info.state) == "success" and dir_task.info.result:
-                if hasattr(dir_task.info.result, "file") and dir_task.info.result.file:
-                    subdirs = []
-                    for file_entry in dir_task.info.result.file:
-                        try:
-                            # Identify directories: no leading dot, no extension, or has folderFileInfo
-                            path = getattr(file_entry, "path", "")
-                            if not path or path.startswith("."):
-                                continue
-                            
-                            is_dir = (hasattr(file_entry, "folderFileInfo") or 
-                                     ("." not in path.split("/")[-1]))
-                            
-                            if is_dir:
-                                subdirs.append(path)
-                        except Exception:
-                            continue
-                    
-                    # Recursively search each subdirectory
-                    for subdir_name in subdirs:
-                        if datastore_path.endswith("]"):
-                            subdir_path = f"{datastore_path} {subdir_name}"
-                        else:
-                            subdir_path = f"{datastore_path}/{subdir_name}"
-                        
-                        warnings.extend(
-                            self._search_datastore_path(datastore, subdir_path, registered_files)
-                        )
+                # task.info.result is a list of HostDatastoreBrowserSearchResults
+                all_results = task.info.result
+                
+                if not isinstance(all_results, list):
+                    all_results = [all_results]
+                
+                logger.debug(f"SearchDatastoreSubFolders returned {len(all_results)} result sets")
+                
+                for result_set in all_results:
+                    result_warnings = self._process_datastore_search_results(
+                        result_set, datastore.name, registered_files
+                    )
+                    warnings.extend(result_warnings)
 
         except Exception as e:
-            logger.debug(f"Search error: {datastore_path} - {e}")
+            logger.debug(f"Error in SearchDatastoreSubFolders: {datastore_path} - {e}", exc_info=True)
 
         return warnings
+
+    def _search_datastore_subfolders(self, datastore, datastore_path, registered_files):
+        """Alias for backward compatibility - calls _search_datastore_path"""
+        return self._search_datastore_path(datastore, datastore_path, registered_files)
 
     def _process_datastore_search_results(self, search_results, datastore_name, registered_files):
         """Process files found in datastore search for orphaned entries with deduplication"""
