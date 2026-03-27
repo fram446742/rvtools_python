@@ -645,7 +645,7 @@ class VHealthCollector(BaseCollector):
             
             for basename, files in file_groups.items():
                 vmx_files = [f for f in files if f[0] == "vmx"]
-                # vmtx_files = [f for f in files if f[0] == "vmtx"]
+                vmtx_files = [f for f in files if f[0] == "vmtx"]
                 vmdk_files = [f for f in files if f[0] == "vmdk"]
                 
                 # If there's a .vmx with this basename, skip BOTH .vmx and .vmdk
@@ -654,13 +654,61 @@ class VHealthCollector(BaseCollector):
                     # logger.debug(f"[ZOMBIE DEBUG] Skipping group '{basename}': has .vmx (registered VM)")
                     continue
                 
-                # # If there's a .vmtx with this basename, skip BOTH .vmtx and .vmdk
-                # # (the .vmtx means it's a registered template, so the VMDK is not a zombie)
-                # if vmtx_files:
-                #     logger.debug(f"[ZOMBIE DEBUG] Skipping group '{basename}': has .vmtx (registered template)")
-                #     continue
+                # If there's a .vmtx with this basename, report it as zombie template
+                # (the .vmtx alone indicates a zombie template - its vmdk is not a zombie)
+                if vmtx_files:
+                    for ext, file_path, file_entry in vmtx_files:
+                        if file_path not in processed:
+                            # This is a zombie template file
+                            full_path = f"[{datastore_name}] {file_entry.path}"
+                            
+                            # Extract file metadata
+                            file_info_parts = []
+                            file_age_days = None
+                            
+                            try:
+                                if hasattr(file_entry, 'fileSize') and file_entry.fileSize:
+                                    size_mb = file_entry.fileSize / (1024 * 1024)
+                                    file_info_parts.append(f"size: {size_mb:.1f} MB")
+                                
+                                if hasattr(file_entry, 'modification') and file_entry.modification:
+                                    mod_iso = file_entry.modification.isoformat()
+                                    file_info_parts.append(f"modified: {mod_iso}")
+                                    
+                                    # Calculate age in days
+                                    try:
+                                        from datetime import datetime, timezone
+                                        now = datetime.now(timezone.utc) if file_entry.modification.tzinfo else datetime.now()
+                                        delta = now - file_entry.modification
+                                        file_age_days = delta.days
+                                        file_info_parts.append(f"age: {file_age_days} days")
+                                    except:
+                                        pass
+                            except:
+                                pass
+                            
+                            # Build file info string
+                            file_info = ""
+                            if file_info_parts:
+                                file_info = f" ({', '.join(file_info_parts)})"
+                            
+                            msg = f"Possibly a Zombie template! Please check.{file_info}"
+
+                            warning = {
+                                "name": full_path,
+                                "message": msg,
+                                "message_type": "Zombie",
+                                "age": file_age_days,
+                                "vi_sdk_server": vi_sdk_info["server"],
+                                "vi_sdk_uuid": vi_sdk_info["uuid"],
+                            }
+                            warnings.append(warning)
+                            processed.add(file_path)
+                    
+                    # Skip processing VMDK files for this basename since template is already reported
+                    continue
                 
-                # Only report orphaned .vmdk if there's NO .vmx with same name
+                # Only report orphaned .vmdk if there's NO .vmx or .vmtx with same name
                 if vmdk_files:
                     files_to_report = [vmdk_files[0]]  # Keep only first .vmdk
                 else:
@@ -776,6 +824,7 @@ class VHealthCollector(BaseCollector):
                             "name": full_path,
                             "message": msg,
                             "message_type": "Zombie",
+                            "age": file_age_days,
                             "vi_sdk_server": vi_sdk_info["server"],
                             "vi_sdk_uuid": vi_sdk_info["uuid"],
                         }

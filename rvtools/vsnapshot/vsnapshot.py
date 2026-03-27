@@ -65,6 +65,19 @@ class VSnapshotCollector(BaseCollector):
         snapshot_data["datetime"] = (
             str(snapshot.createTime) if snapshot.createTime else ""
         )
+        
+        # Calculate snapshot age in days from creation time
+        snapshot_age_days = None
+        try:
+            if snapshot.createTime:
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc) if snapshot.createTime.tzinfo else datetime.now()
+                delta = now - snapshot.createTime
+                snapshot_age_days = delta.days
+        except:
+            pass
+        snapshot_data["age"] = snapshot_age_days or ""
+        
         snapshot_data["filename"] = getattr(snapshot, "vm", {}) or ""
         snapshot_data["size_mib_vmsn"] = ""
         snapshot_data["size_mib_total"] = ""
